@@ -9,10 +9,10 @@ AI 驱动的文字放置武侠网页游戏。**完全单机、自用**：存档�
 修炼 / 日常行动 → 遇到人物、任务、事件 → 选择固定选项或自由输入 → AI 转为结构化行动、服务端校验并结算 → 提交状态后 AI 生成叙事 → 记录历史、更新 NPC 记忆并存档。
 
 ## 技术栈
-React + Vite · Fastify + TypeScript · SQLite + Drizzle（T-005 起）· Zod · Vitest · 可替换的 AI 适配层（S3 起）
+React + Vite · Fastify + TypeScript · SQLite（better-sqlite3）+ Drizzle· Zod · Vitest · 可替换的 AI 适配层（S3 起）
 
 ## 环境要求
-Node.js ≥ 20
+Node.js ≥ 20（`better-sqlite3` 为原生模块，常见平台自带预编译包；若安装失败请安装 C++ 构建工具后重试）
 
 ## 快速开始
 ```bash
@@ -21,6 +21,7 @@ cp .env.example .env     # 可选，默认值即可运行
 npm run dev              # 开发：服务 127.0.0.1:3000，前端 127.0.0.1:5173
 npm start                # 构建前端并由本机服务托管：http://127.0.0.1:3000
 ```
+存档默认在 `data/jianghu.sqlite`（可用 `DB_PATH` 修改，相对路径以仓库根目录为准，已被 `.gitignore` 忽略）。
 真实密钥（AI API Key）只放 `.env`，已被 `.gitignore` 忽略，不会进入前端或仓库。
 
 ## 常用命令
@@ -29,6 +30,10 @@ npm start                # 构建前端并由本机服务托管：http://127.0.0
 | `npm run dev` | 同时启动后端与前端开发服务 |
 | `npm start` | 构建并以生产方式本机运行 |
 | `npm run build` | 构建前端 |
+| `npm run db:migrate` | 迁移数据库到最新版本并写入初始角色（`npm start`/`dev` 启动时也会自动执行） |
+| `npm run db:export -- [文件]` | 导出存档为 JSON（不带文件名则输出到终端） |
+| `npm run db:import -- <文件>` | 导入存档（先自动备份当前存档，文件经严格校验） |
+| `npm run db:generate` | 修改 `schema.ts` 后生成新的迁移文件到 `db/migrations` |
 | `npm run typecheck` | 全工作区 TypeScript 类型检查 |
 | `npm test` | 运行 Vitest |
 
@@ -38,7 +43,8 @@ apps/web              前端（React + Vite）
 apps/server           本地后端（Fastify，模块化单体）
 packages/contracts    共享 DTO 与 Zod schema
 packages/game-rules   纯规则函数（无 IO，可固定种子复现）
-db/                   迁移与种子
+db/migrations         Drizzle 生成的 SQL 迁移（schema 见 apps/server/src/db/schema.ts）
+db/seeds              种子说明（初始角色由 packages/game-rules 提供）
 docs/                 项目文档与任务记录
 ```
 
@@ -55,7 +61,7 @@ docs/                 项目文档与任务记录
 ## 开发进度
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| S1 原型 | T-001 工程骨架 ✅ · T-002 共享类型与校验 ✅ · T-003 主界面骨架 ✅ · T-004 初始角色与固定行动 ✅（待验收）· T-005 ~ T-006 | 进行中 |
+| S1 原型 | T-001 工程骨架 ✅ · T-002 共享类型与校验 ✅ · T-003 主界面骨架 ✅ · T-004 初始角色与固定行动 ✅ · T-005 SQLite 存档 ✅（待验收）· T-006 | 进行中 |
 | S2 规则与时间 | 规则引擎、离线收益、幂等 | 未开始 |
 | S3 AI 行动 | 结构化解析、判定、叙事分离 | 未开始 |
 | S4 NPC 记忆 | 关系、记忆、任务状态机 | 未开始 |

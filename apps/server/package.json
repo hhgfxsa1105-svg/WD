@@ -6,14 +6,24 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/cli/migrate.ts",
+    "db:export": "tsx src/cli/export.ts",
+    "db:import": "tsx src/cli/import.ts"
   },
   "dependencies": {
     "@fastify/static": "^10.1.7",
     "@jhz/contracts": "*",
     "@jhz/game-rules": "*",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",
     "tsx": "^4.19.0",
     "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "drizzle-kit": "^0.31.11"
   }
 }

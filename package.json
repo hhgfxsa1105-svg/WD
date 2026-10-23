@@ -16,11 +16,16 @@
     "build": "npm run build -w @jhz/web",
     "start": "npm run build && npm run start -w @jhz/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "npm run db:generate -w @jhz/server",
+    "db:migrate": "npm run db:migrate -w @jhz/server",
+    "db:export": "npm run db:export -w @jhz/server --",
+    "db:import": "npm run db:import -w @jhz/server --"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "concurrently": "^9.1.0",
+    "drizzle-orm": "^0.45.4",
     "typescript": "^5.7.0",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"
