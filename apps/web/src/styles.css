@@ -159,3 +159,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .six { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) { .bar > i { transition: none; } }
+
+.err { color: var(--bad); font-size: 14px; padding-block: 6px; }
+.boot { min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 12px; color: var(--muted); }
+.brand-boot { font-family: var(--font-brush); font-size: 40px; color: var(--accent); letter-spacing: .1em; }
+.boot button { background: var(--surface); border: 1px solid var(--accent); color: var(--fg); border-radius: 4px; padding: 8px 20px; min-height: 44px; cursor: pointer; }

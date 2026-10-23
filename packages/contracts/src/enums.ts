@@ -28,6 +28,11 @@ export const EFFECT_KINDS = ['attribute_bonus', 'exp_multiplier', 'affinity_modi
 export const EffectKindSchema = z.enum(EFFECT_KINDS);
 export type EffectKind = z.infer<typeof EffectKindSchema>;
 
+/** 行动可改变的数值（用于结果摘要） */
+export const CHANGE_STATS = ['stamina', 'hp', 'neili', 'realmProgress'] as const;
+export const ChangeStatSchema = z.enum(CHANGE_STATS);
+export type ChangeStat = z.infer<typeof ChangeStatSchema>;
+
 export const FIXED_ACTION_IDS = ['cultivate', 'rest'] as const;
 export const FixedActionIdSchema = z.enum(FIXED_ACTION_IDS);
 export type FixedActionId = z.infer<typeof FixedActionIdSchema>;

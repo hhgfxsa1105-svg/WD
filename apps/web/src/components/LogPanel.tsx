@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { LogEntry } from '../mock/data';
+import type { LogEntry } from '../log';
 
 export function LogPanel({ entries }: { entries: LogEntry[] }) {
   const list = useRef<HTMLOListElement>(null);

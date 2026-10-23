@@ -1,6 +1,6 @@
 import { PlayerStateSchema, type PlayerState } from '@jhz/contracts';
 
-/** T-003 本地示例数据；T-004 起由服务端提供。加载时同样经过契约校验。 */
+/** 新存档的初始角色（种子数据；名号与评级后续由规则表提供） */
 export function createInitialPlayer(): PlayerState {
   return PlayerStateSchema.parse({
     displayName: '林惊鸿',
@@ -17,40 +17,24 @@ export function createInitialPlayer(): PlayerState {
       id: 'title_sect_disciple',
       name: '山门弟子',
       grade: 'fan',
-      effects: [{ kind: 'exp_multiplier', text: '修炼经验 +5%' }],
+      effects: [{ kind: 'exp_multiplier', value: 5, text: '修炼经验 +5%' }],
     },
     epithet: {
       id: 'epithet_newcomer',
       name: '初出茅庐',
       grade: 'fan',
-      effects: [{ kind: 'affinity_modifier', text: '初次与人交谈，好感 +2' }],
+      effects: [{ kind: 'affinity_modifier', value: 2, text: '初次与人交谈，好感 +2' }],
     },
     fate: {
       id: 'fate_qisha',
       name: '七杀',
       grade: 'xuan',
       effects: [
-        { kind: 'attribute_bonus', text: '力 +3，气血上限 +10%' },
-        { kind: 'chance_modifier', text: '结仇概率提高' },
+        { kind: 'attribute_bonus', value: 3, text: '力 +3，气血上限 +10%' },
+        { kind: 'chance_modifier', value: 10, text: '结仇概率提高' },
       ],
     },
     location: { id: 'loc_qingyun_gate', name: '青云山 · 山门' },
     version: 0,
   });
-}
-
-export const INITIAL_LOG = [
-  { id: 0, time: '辰时', text: '你醒来时，天光尚淡。远处山门钟声一响，今日的江湖便开始了。', chips: [] as LogChip[], system: true },
-];
-
-export interface LogChip {
-  text: string;
-  tone: 'up' | 'down';
-}
-export interface LogEntry {
-  id: number;
-  time: string;
-  text: string;
-  chips: LogChip[];
-  system?: boolean;
 }

@@ -1,2 +1,2 @@
-// 纯规则函数（无 IO）。规则于 S2 阶段（T-007）加入。
-export {};
+export * from './actions.js';
+export * from './initial.js';

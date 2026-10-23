@@ -1,23 +1,25 @@
-import { COSTS } from '../mock/engine';
+import { RULES } from '@jhz/game-rules';
 
 interface Props {
+  busy: boolean;
   canCultivate: boolean;
+  error: string | null;
   onCultivate: () => void;
   onRest: () => void;
 }
 
-export function ActionPanel({ canCultivate, onCultivate, onRest }: Props) {
+export function ActionPanel({ busy, canCultivate, error, onCultivate, onRest }: Props) {
   return (
     <>
       <div className="acts">
-        <button className="act" type="button" disabled={!canCultivate} onClick={onCultivate}>
+        <button className="act" type="button" disabled={busy || !canCultivate} onClick={onCultivate}>
           <strong>修炼</strong>
-          <span>体力 −{COSTS.CULTIVATE_COST} · 获得经验</span>
+          <span>体力 −{RULES.cultivate.staminaCost} · 获得经验</span>
         </button>
-        <button className="act" type="button" onClick={onRest}>
+        <button className="act" type="button" disabled={busy} onClick={onRest}>
           <strong>休息</strong>
           <span>
-            体力 +{COSTS.REST_STAMINA} · 气血 +{COSTS.REST_HP}
+            体力 +{RULES.rest.staminaGain} · 气血 +{RULES.rest.hpGain}
           </span>
         </button>
       </div>
@@ -27,7 +29,13 @@ export function ActionPanel({ canCultivate, onCultivate, onRest }: Props) {
           行动
         </button>
       </form>
-      {!canCultivate && <p className="soon">体力不足，先休息一下。</p>}
+      {error ? (
+        <p className="err" role="alert">
+          {error}
+        </p>
+      ) : (
+        !canCultivate && <p className="soon">体力不足，先休息一下。</p>
+      )}
     </>
   );
 }

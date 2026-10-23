@@ -17,7 +17,10 @@ const money = z.number().int().min(0).max(LIMITS.currencyMax);
 export const CurrencySchema = z.object({ yuanbao: money, silver: money, copper: money }).strict();
 export type Currency = z.infer<typeof CurrencySchema>;
 
-export const EffectSchema = z.object({ kind: EffectKindSchema, text: z.string().min(1).max(60) }).strict();
+/** value 的单位随 kind：exp_multiplier / chance_modifier 为百分点，affinity_modifier / attribute_bonus 为整数加值 */
+export const EffectSchema = z
+  .object({ kind: EffectKindSchema, value: z.number().int().min(-1000).max(1000), text: z.string().min(1).max(60) })
+  .strict();
 export type Effect = z.infer<typeof EffectSchema>;
 
 /** 名号（头衔 / 称号 / 命格）：均有评级与效果；效果由规则表定义并由程序结算 */

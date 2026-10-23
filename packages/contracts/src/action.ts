@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { ActionStatusSchema, FixedActionIdSchema } from './enums.js';
+import { ActionStatusSchema, ChangeStatSchema, FixedActionIdSchema } from './enums.js';
+import { PlayerStateSchema } from './player.js';
 import { LIMITS } from './limits.js';
 
 /** 浏览器只提交意图；资源数值与结果一律由服务端计算 */
@@ -21,11 +22,19 @@ export const SubmitActionRequestSchema = z.discriminatedUnion('kind', [
 ]);
 export type SubmitActionRequest = z.infer<typeof SubmitActionRequestSchema>;
 
+export const StateChangeSchema = z
+  .object({ stat: ChangeStatSchema, delta: z.number().int().min(-1_000_000).max(1_000_000) })
+  .strict();
+export type StateChange = z.infer<typeof StateChangeSchema>;
+
+/** 行动结果：状态变化由服务端结算；narrative 在叙事生成失败时为 null */
 export const ActionResponseSchema = z
   .object({
     actionId: z.string().min(1),
     status: ActionStatusSchema,
     narrative: z.string().max(4000).nullable(),
+    changes: z.array(StateChangeSchema).max(16),
+    player: PlayerStateSchema,
   })
   .strict();
 export type ActionResponse = z.infer<typeof ActionResponseSchema>;

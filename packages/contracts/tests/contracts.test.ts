@@ -12,7 +12,7 @@ const honor = (grade = 'fan') => ({
   id: 'h_1',
   name: '山门弟子',
   grade,
-  effects: [{ kind: 'exp_multiplier', text: '修炼经验 +5%' }],
+  effects: [{ kind: 'exp_multiplier', value: 5, text: '修炼经验 +5%' }],
 });
 
 const validPlayer = {
@@ -71,7 +71,9 @@ describe('PlayerStateSchema', () => {
     ['属性缺字段', { attributes: { spirit: 1 } }],
     ['属性越界', { attributes: { ...validPlayer.attributes, strength: LIMITS.attribute.max + 1 } }],
     ['未知评级', { title: honor('legend') }],
-    ['名号效果类别未知', { title: { ...honor(), effects: [{ kind: 'god_mode', text: 'x' }] } }],
+    ['名号效果类别未知', { title: { ...honor(), effects: [{ kind: 'god_mode', value: 1, text: 'x' }] } }],
+    ['名号效果缺数值', { title: { ...honor(), effects: [{ kind: 'exp_multiplier', text: 'x' }] } }],
+    ['名号效果数值越界', { title: { ...honor(), effects: [{ kind: 'exp_multiplier', value: 5000, text: 'x' }] } }],
     ['名号含未知字段', { title: { ...honor(), power: 9999 } }],
     ['位置缺 id', { location: { name: '山门' } }],
     ['昵称为空白', { displayName: '   ' }],
