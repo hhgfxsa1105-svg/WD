@@ -35,7 +35,8 @@ npm start                # 构建前端并由本机服务托管：http://127.0.0
 | `npm run db:import -- <文件>` | 导入存档（先自动备份当前存档，文件经严格校验） |
 | `npm run db:generate` | 修改 `schema.ts` 后生成新的迁移文件到 `db/migrations` |
 | `npm run typecheck` | 全工作区 TypeScript 类型检查 |
-| `npm test` | 运行 Vitest |
+| `npm test` | 运行 Vitest（单元与集成） |
+| `npm run test:e2e` | 浏览器端到端（需 `npx playwright install chromium`，或设置 `PW_CHROMIUM_PATH`） |
 
 ## 目录结构
 ```
@@ -57,11 +58,14 @@ docs/                 项目文档与任务记录
 | [审计检查清单](docs/audit-checklist.md) | 质量门槛与发布判定 |
 | [单机调整说明](docs/adjustments.md) | 相对 V1.0 文档的单机自用调整（**优先于原文**） |
 | [任务记录](docs/task-records/) | 每项任务的实现、验证命令与证据 |
+| [原型演示](docs/demo.md) | 从零安装到走完原型循环的步骤 |
+| [已知问题](docs/known-issues.md) | 当前限制与处理阶段 |
+| [审计报告](docs/audit/) | 各阶段审计与签核记录 |
 
 ## 开发进度
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| S1 原型 | T-001 工程骨架 ✅ · T-002 共享类型与校验 ✅ · T-003 主界面骨架 ✅ · T-004 初始角色与固定行动 ✅ · T-005 SQLite 存档 ✅（待验收）· T-006 | 进行中 |
+| S1 原型 | T-001 ~ T-005 ✅ · T-006 原型验收与说明 ✅（S1 待验收签核，见 [S1 审计报告](docs/audit/S1-report.md)） | 待验收 |
 | S2 规则与时间 | 规则引擎、离线收益、幂等 | 未开始 |
 | S3 AI 行动 | 结构化解析、判定、叙事分离 | 未开始 |
 | S4 NPC 记忆 | 关系、记忆、任务状态机 | 未开始 |
