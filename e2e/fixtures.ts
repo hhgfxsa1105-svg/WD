@@ -24,6 +24,8 @@ export interface GameServer {
   /** 直接修改角色状态（用于构造「进度已满」等场景） */
   setPlayer(patch: Record<string, unknown>): Promise<void>;
   addItem(itemId: string, quantity: number): Promise<void>;
+  /** 控制模拟 AI：让解析/叙事失败，或改每日调用上限 */
+  setAi(opts: { parse?: 'ok' | 'fail'; narrate?: 'ok' | 'fail'; dailyLimit?: number }): Promise<void>;
   /** 优雅关闭并用同一份存档重新启动（端口不变） */
   restart(): Promise<void>;
 }
@@ -41,10 +43,12 @@ async function waitHealthy(url: string): Promise<void> {
 }
 
 /** 每个用例使用独立的临时存档与独立端口，互不影响 */
-export const test = base.extend<{ server: GameServer; realOffline: boolean }>({
+export const test = base.extend<{ server: GameServer; realOffline: boolean; aiOff: boolean }>({
   /** 为 true 时使用真实的离线策略（阈值 5 分钟、上限 12 小时、效率 50%） */
   realOffline: [false, { option: true }],
-  server: async ({ realOffline }, use) => {
+  /** 为 true 时 AI 完全关闭（未配置） */
+  aiOff: [false, { option: true }],
+  server: async ({ realOffline, aiOff }, use) => {
     const dir = mkdtempSync(join(tmpdir(), 'jhz-e2e-'));
     const port = await freePort();
     const url = `http://127.0.0.1:${port}`;
@@ -58,6 +62,7 @@ export const test = base.extend<{ server: GameServer; realOffline: boolean }>({
           HOST: '127.0.0.1',
           DB_PATH: join(dir, 'save.sqlite'),
           ...(realOffline ? { E2E_REAL_OFFLINE: '1' } : {}),
+          ...(aiOff ? { E2E_AI: 'off' } : {}),
         },
         stdio: 'ignore',
       });
@@ -87,6 +92,7 @@ export const test = base.extend<{ server: GameServer; realOffline: boolean }>({
       setRng: (value) => post('rng', { value }),
       setPlayer: (patch) => post('player', patch),
       addItem: (itemId, quantity) => post('item', { itemId, quantity }),
+      setAi: (opts) => post('ai', opts),
       restart: async () => {
         await stop();
         await start();

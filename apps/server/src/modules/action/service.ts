@@ -152,13 +152,14 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       const base = { id: actionId, kind: req.kind, idempotencyKey: req.idempotencyKey, fingerprint, status, createdAt: now };
       tx.saveAction({ ...base, response: draft }); // 先落行动，审计事件才能引用它
       const diff = stateDiff(before, snapshot(tx));
+      const narrated = !!narratable?.(resolved.log.type);
       const log = tx.appendEvent({
         actionId,
         eventType: extra.eventType ?? (req.kind === 'fixed' ? `action.${req.actionId}` : 'action.breakthrough'),
         before: diff?.before ?? null,
         after: diff?.after ?? null,
         at: now,
-        log: resolved.log,
+        log: narrated ? { ...resolved.log, narration: { actionId, pending: true } } : resolved.log,
       });
       const response = ActionResponseSchema.parse({ ...draft, log });
       tx.saveAction({ ...base, response });

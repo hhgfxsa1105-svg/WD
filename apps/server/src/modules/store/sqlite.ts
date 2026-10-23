@@ -203,7 +203,8 @@ function makeTx(db: Executor): GameTx {
         .orderBy(asc(auditEvents.seq))
         .get();
       if (!row) return null;
-      const log = LogRecordSchema.parse({ ...JSON.parse(row.logJson!), narrative });
+      const prev = JSON.parse(row.logJson!);
+      const log = LogRecordSchema.parse({ ...prev, narrative, ...(prev.narration ? { narration: { ...prev.narration, pending: false } } : {}) });
       db.update(auditEvents).set({ logJson: JSON.stringify(log) }).where(eq(auditEvents.seq, row.seq)).run();
       return log;
     },

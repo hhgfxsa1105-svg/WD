@@ -71,7 +71,7 @@ export function createKeywordMockProvider(model = 'keyword-mock'): AiProvider {
       const text = [...req.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
       let out: string;
       if (req.purpose === 'narrate') out = '你定了定神，按自己的意思行事，一切顺理成章。';
-      else if (/突破|冲关|破境/.test(text)) {
+      else if (/突破|冲关|破境|冲击/.test(text)) {
         const pill = /丹/.test(text) && !/不(用|吃|使用)/.test(text);
         out = plan('breakthrough', { intent: '尝试突破', target: pill ? { type: 'item', id: 'pill_breakthrough_fan' } : null });
       } else if (/(停止|结束).*(修炼|挂机)|不.*(修炼|挂机)了/.test(text)) out = plan('stop_idle', { intent: '停止放置修炼' });

@@ -25,6 +25,9 @@
 ## 行动结果
 `ActionResponse`：`actionId`、`status`、`narrative`、`changes`（数值变化）、`breakthrough`（仅突破：`outcome`、`chancePercent`、`roll`）、`log`（本次写入的日志记录，重试回放时与首次相同）、`ai`（仅自由行动：`intent`、`actionType`、`executed`、`clarification`）、`player`（最新角色）。澄清与查看状态不产生行动记录，`GET /actions/:id` 查不到它们。
 
+## 日志记录的叙事标记
+`LogRecord.narration`（可选）：交给 AI 叙事的行动带 `{ actionId, pending }`。`pending: true` 表示结算已生效、叙事待补，前端据此显示「叙事待补 · 重新叙事」并调用 `POST /actions/:id/narrate`；成功后 `pending` 变为 `false`。旧记录与不叙事的行动没有此字段。
+
 ## 叙事状态（`status`）
 - `COMPLETED`：结算与叙事都已完成（含不需要 AI 叙事的行动，直接用模板）。
 - `COMMITTED`：**结算已提交**，叙事待补（`narrative` 暂为模板文字）。刷新、重启后依然如此；`POST /actions/:id/narrate` 可补写。

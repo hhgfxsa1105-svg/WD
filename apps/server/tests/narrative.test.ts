@@ -82,6 +82,7 @@ describe('叙事与结算分离：成功路径', () => {
     expect(res.breakthrough).toEqual(base.breakthrough);
     expect(s.pills()).toBe(base.pills);
     expect((await s.log()).at(-1)?.narrative).toBe(GOOD);
+    expect((await s.log()).at(-1)?.narration).toEqual({ actionId: res.actionId, pending: false });
     expect(s.events(res.actionId)).toEqual(['action.breakthrough', 'action.narrated']);
   });
 
@@ -138,6 +139,7 @@ describe('叙事失败：行动结果不变，回退模板，可稍后重试', (
       expect(s.narrateCalls()).toHaveLength(1); // 不自动反复重试
       expect(s.events(res.actionId)).toEqual(['action.breakthrough']);
       expect((await s.log()).at(-1)?.narrative).toBe(base.template);
+      expect((await s.log()).at(-1)?.narration).toEqual({ actionId: res.actionId, pending: true }); // 日志带「叙事待补」标记，刷新后前端据此显示重试入口
     });
   }
 
@@ -169,10 +171,12 @@ describe('叙事失败：行动结果不变，回退模板，可稍后重试', (
     expect(done.narrative).toBe(GOOD);
     expect(done.player).toEqual(first.player);
     expect(done.changes).toEqual(first.changes);
-    expect(done.log).toEqual({ ...first.log, narrative: GOOD });
+    expect(first.log?.narration).toEqual({ actionId: first.actionId, pending: true });
+    expect(done.log).toEqual({ ...first.log, narrative: GOOD, narration: { actionId: first.actionId, pending: false } });
     expect(s.state()).toEqual(playerBefore);
     expect(s.events(first.actionId)).toEqual(['action.breakthrough', 'action.narrated']);
     expect((await s.log()).at(-1)?.narrative).toBe(GOOD);
+    expect((await s.log()).at(-1)?.narration).toEqual({ actionId: first.actionId, pending: false });
 
     const calls = s.narrateCalls().length;
     expect(ok(await s.narrateAgain(first.actionId))).toEqual(done);

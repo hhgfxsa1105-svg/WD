@@ -1,5 +1,6 @@
 import {
   ActionResponseSchema,
+  AiStatusResponseSchema,
   CultivationResponseSchema,
   ErrorResponseSchema,
   InventoryResponseSchema,
@@ -7,6 +8,7 @@ import {
   PlayerStateSchema,
   WorldTimeResponseSchema,
   type ActionResponse,
+  type AiStatusResponse,
   type CultivationResponse,
   type FixedActionId,
   type InventoryItem,
@@ -71,6 +73,15 @@ export const submitFixedAction = (actionId: FixedActionId, idempotencyKey = newI
 
 export const submitBreakthrough = (pillItemId: string | null, idempotencyKey = newIdempotencyKey()): Promise<ActionResponse> =>
   submit({ kind: 'breakthrough', idempotencyKey, pillItemId });
+
+export const submitFreeAction = (input: string, idempotencyKey = newIdempotencyKey()): Promise<ActionResponse> =>
+  submit({ kind: 'free', idempotencyKey, input });
+
+/** 重新生成叙事：只改文字，不改任何状态 */
+export const retryNarration = (actionId: string): Promise<ActionResponse> =>
+  postJson(`/api/v1/actions/${encodeURIComponent(actionId)}/narrate`, ActionResponseSchema);
+
+export const fetchAiStatus = (): Promise<AiStatusResponse> => request('/api/v1/ai/status', AiStatusResponseSchema);
 
 export const fetchCultivation = (): Promise<CultivationResponse> => request('/api/v1/cultivation', CultivationResponseSchema);
 export const startCultivation = (): Promise<CultivationResponse> => postJson('/api/v1/cultivation/start', CultivationResponseSchema);

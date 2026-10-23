@@ -87,7 +87,7 @@ function makeTx(s: State): GameTx {
     replaceLogNarrative(actionId, narrative) {
       const ev = s.events.find((e) => e.actionId === actionId && e.log);
       if (!ev?.log) return null;
-      ev.log = LogRecordSchema.parse({ ...ev.log, narrative });
+      ev.log = LogRecordSchema.parse({ ...ev.log, narrative, ...(ev.log.narration ? { narration: { ...ev.log.narration, pending: false } } : {}) });
       return structuredClone(ev.log);
     },
     recentLog: (limit) =>

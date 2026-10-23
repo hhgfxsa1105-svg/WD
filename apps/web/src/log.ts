@@ -14,6 +14,8 @@ export interface LogEntry {
   /** 小字补充，如「成功率 · 掷点」「放置修炼 · 结算 N 分钟」 */
   sub?: string;
   system?: boolean;
+  /** 叙事待补：结算已生效，文字为模板；可对该行动重试叙事 */
+  pendingNarration?: { actionId: string };
 }
 
 const HOURS = ['辰时', '巳时', '午时', '未时', '申时', '酉时'];
@@ -33,7 +35,8 @@ const FULL_NOTE_TEXT = '周身真气盈满，似乎触到了一道无形的关�
 
 /** 把服务端的结构化日志记录渲染为界面条目；一条记录可能派生出附加条目（如「修炼已圆满」） */
 export function toLogEntries(r: LogRecord): LogEntry[] {
-  const base = { key: String(r.id), seq: r.id, time: hourLabel(r.id) };
+  const base: Pick<LogEntry, 'key' | 'seq' | 'time' | 'pendingNarration'> = { key: String(r.id), seq: r.id, time: hourLabel(r.id) };
+  if (r.narration?.pending) base.pendingNarration = { actionId: r.narration.actionId };
 
   if (r.type === 'breakthrough' && r.breakthrough) {
     const b = r.breakthrough;
@@ -72,4 +75,10 @@ export function mergeEntries(current: LogEntry[], incoming: LogEntry[]): LogEntr
   const seen = new Set(current.map((e) => e.key));
   const fresh = incoming.filter((e) => !seen.has(e.key));
   return fresh.length === 0 ? current : [...current, ...fresh].sort((a, b) => a.seq - b.seq);
+}
+
+/** 用新内容替换同一个 key 的条目（叙事重试成功后文字变了）；没有对应条目则忽略 */
+export function replaceEntries(current: LogEntry[], incoming: LogEntry[]): LogEntry[] {
+  const byKey = new Map(incoming.map((e) => [e.key, e]));
+  return current.map((e) => byKey.get(e.key) ?? e);
 }

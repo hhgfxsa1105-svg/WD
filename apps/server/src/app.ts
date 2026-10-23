@@ -41,7 +41,7 @@ export async function buildApp({
   ai = createGatewayFromConfig(loadAiConfig({}), store.aiLog, clock),
   clockBehindMs = () => 0,
 }: AppDeps = {}) {
-  const app = Fastify({ logger: false, genReqId: newRequestId, bodyLimit: 16 * 1024 });
+  const app = Fastify({ logger: false, genReqId: newRequestId, bodyLimit: 16 * 1024, forceCloseConnections: true });
 
   registerErrorHandling(app);
 

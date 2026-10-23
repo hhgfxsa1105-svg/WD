@@ -8,6 +8,7 @@ import { LocationBar } from './components/LocationBar';
 import { LogPanel } from './components/LogPanel';
 import { Sheet } from './components/Sheet';
 import { SideRail } from './components/SideRail';
+import { aiView } from './ai';
 import { hourLabel } from './log';
 import { useGame } from './useGame';
 
@@ -22,6 +23,8 @@ export function App() {
     g.clearMessages();
     setSheet((cur) => (cur === name ? null : name));
   };
+
+  const ai = aiView(g.aiStatus, g.aiDown);
 
   if (!g.player) {
     return (
@@ -48,7 +51,7 @@ export function App() {
       <main className="col">
         <CharacterCard player={g.player} />
         <LocationBar location={g.player.location} time={`晴 · ${hourLabel(g.log.length - 1)}`} />
-        <LogPanel entries={g.log} />
+        <LogPanel entries={g.log} ai={ai} onRetryNarration={g.retryNarration} />
         <BottomNav active={sheet && isNavItem(sheet) ? sheet : null} onOpen={toggle} />
         {sheet && (
           <Sheet title={sheet} onClose={() => setSheet(null)}>
@@ -67,6 +70,10 @@ export function App() {
                 onCultivate={() => g.runFixed('cultivate')}
                 onRest={() => g.runFixed('rest')}
                 onOpenBreakthrough={openBreakthrough}
+                ai={ai}
+                thinking={g.thinking}
+                aiReply={g.aiReply}
+                onFree={g.runFree}
               />
             ) : sheet === '背包' ? (
               <InventoryPanel items={g.inventory} />

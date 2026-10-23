@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { pillGradeOf } from '@jhz/game-rules';
 import type {
   CultivationJob,
+  ActionResponse,
+  AiStatusResponse,
   CultivationResponse,
   FixedActionId,
   InventoryItem,
@@ -11,23 +13,33 @@ import type {
 } from '@jhz/contracts';
 import {
   ApiError,
+  fetchAiStatus,
   fetchCultivation,
   fetchInventory,
   fetchLog,
   fetchPlayerState,
   fetchWorldTime,
+  retryNarration as apiRetryNarration,
   settleCultivation,
   startCultivation,
   stopCultivation,
   submitBreakthrough,
+  submitFreeAction,
   submitFixedAction,
 } from './api/client';
 import { createKeyStore } from './api/idempotency';
 import { GRADE_LABEL } from './labels';
-import { WELCOME, mergeEntries, toLogEntries, type LogEntry } from './log';
+import { WELCOME, mergeEntries, replaceEntries, toLogEntries, type LogEntry } from './log';
 
 const AUTO_SETTLE_MS = 30_000;
 const messageOf = (e: unknown): string => (e instanceof ApiError ? e.message : '发生未知错误，请重试');
+
+/** 自由行动后面板里显示的一行回复 */
+export interface AiReply {
+  tone: 'done' | 'ask' | 'warn';
+  label: string;
+  text: string;
+}
 
 export function useGame() {
   const [player, setPlayer] = useState<PlayerState | null>(null);
@@ -40,6 +52,11 @@ export function useGame() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<AiStatusResponse | null>(null);
+  /** 刚刚一次 AI 调用失败（成功或刷新后清除） */
+  const [aiDown, setAiDown] = useState(false);
+  const [aiReply, setAiReply] = useState<AiReply | null>(null);
+  const [thinking, setThinking] = useState(false);
 
   const busyRef = useRef(false);
   const keys = useRef(createKeyStore());
@@ -80,8 +97,9 @@ export function useGame() {
 
   const load = useCallback(() => {
     setLoadError(null);
-    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation(), fetchWorldTime().catch(() => null), fetchLog().catch(() => [] as LogRecord[])]).then(
-      async ([p, inv, c, w, history]) => {
+    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation(), fetchWorldTime().catch(() => null), fetchLog().catch(() => [] as LogRecord[]), fetchAiStatus().catch(() => null)]).then(
+      async ([p, inv, c, w, history, ai]) => {
+        setAiStatus(ai);
         setWorld(w);
         setLog(mergeEntries([WELCOME], history.flatMap(toLogEntries)));
         setPlayer(p);
@@ -130,6 +148,74 @@ export function useGame() {
       }
     }, resync);
 
+  /**
+   * 自由行动：玩家原话交给服务端（AI 只做意图解析，结算仍由服务端规则决定）。
+   * 返回服务端的结果；失败或被拒绝时返回 null（错误已显示，输入框内容由调用方保留）。
+   */
+  const runFree = async (input: string): Promise<ActionResponse | null> => {
+    let result: ActionResponse | null = null;
+    setAiReply(null);
+    await guarded(
+      async () => {
+        const fp = `free:${input}`;
+        setThinking(true);
+        try {
+          let r: ActionResponse;
+          try {
+            r = await submitFreeAction(input, keys.current.keyFor(fp));
+          } catch (e) {
+            if (!(e instanceof ApiError && e.code === 'NETWORK')) keys.current.clear(fp); // 网络失败保留键，重试不会重复结算
+            throw e;
+          }
+          keys.current.clear(fp);
+          result = r;
+          setAiDown(false);
+          setPlayer(r.player);
+          appendRecord(r.log);
+          const ai = r.ai;
+          if (ai && !ai.executed) setAiReply({ tone: 'ask', label: '没有执行任何行动', text: ai.clarification ?? r.narrative ?? '可以说得更具体些吗？' });
+          else if (ai) setAiReply({ tone: 'done', label: 'AI 理解为', text: `${ai.intent}（已执行）${ai.actionType === 'check_status' && r.narrative ? `\n${r.narrative}` : ''}` });
+          if (ai?.executed && ai.actionType === 'breakthrough') setInventory(await fetchInventory().catch(() => inventory));
+          if (ai?.executed && (ai.actionType === 'start_idle' || ai.actionType === 'stop_idle')) {
+            const c = await fetchCultivation().catch(() => null);
+            if (c) setJob(c.job);
+          }
+          fetchAiStatus().then(setAiStatus, () => undefined);
+        } finally {
+          setThinking(false);
+        }
+      },
+      (e) => {
+        // 自由行动的失败提示紧贴输入框显示（面板底部会被导航遮住）
+        const unavailable = e instanceof ApiError && e.code === 'AI_UNAVAILABLE';
+        if (unavailable) setAiDown(true);
+        setError(null);
+        setAiReply({ tone: 'warn', label: '没有执行任何行动', text: messageOf(e) });
+        resync(e);
+      },
+    );
+    return result;
+  };
+
+  /** 重新生成某条日志的叙事；成功返回 null，失败返回可直接展示的原因。不占用全局忙碌状态 */
+  const retryingRef = useRef(new Set<string>());
+  const retryNarration = async (actionId: string): Promise<string | null> => {
+    if (retryingRef.current.has(actionId)) return null;
+    retryingRef.current.add(actionId);
+    try {
+      const r = await apiRetryNarration(actionId);
+      setAiDown(false);
+      if (r.log) setLog((l) => replaceEntries(l, toLogEntries(r.log!)));
+      fetchAiStatus().then(setAiStatus, () => undefined);
+      return null;
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'AI_UNAVAILABLE') setAiDown(true);
+      return messageOf(e);
+    } finally {
+      retryingRef.current.delete(actionId);
+    }
+  };
+
   /** quiet=true：没有收益时不提示（开始、停止不该出现「暂无可领取」） */
   const idle = (call: () => Promise<CultivationResponse>, quiet: boolean) =>
     guarded(async () => applyCultivation(await call(), quiet), resync);
@@ -166,9 +252,16 @@ export function useGame() {
     busy,
     error,
     notice,
+    aiStatus,
+    aiDown,
+    aiReply,
+    thinking,
+    runFree,
+    retryNarration,
     clearMessages: () => {
       setError(null);
       setNotice(null);
+      setAiReply(null);
     },
     load,
     runFixed,

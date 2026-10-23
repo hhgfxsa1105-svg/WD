@@ -1,5 +1,8 @@
+import { useEffect, useState, type FormEvent } from 'react';
 import { RULES } from '@jhz/game-rules';
-import type { CultivationJob, PlayerState, WorldTimeResponse } from '@jhz/contracts';
+import type { ActionResponse, CultivationJob, PlayerState, WorldTimeResponse } from '@jhz/contracts';
+import { FREE_HINTS, SLOW_MS, type AiView } from '../ai';
+import type { AiReply } from '../useGame';
 import { breakthroughView } from '../breakthrough';
 import { idlePreview } from '../idle';
 import { offlineRuleText } from '../offline';
@@ -20,6 +23,11 @@ interface Props {
   onCultivate: () => void;
   onRest: () => void;
   onOpenBreakthrough: () => void;
+  ai: AiView;
+  thinking: boolean;
+  aiReply: AiReply | null;
+  /** 提交自由行动；返回服务端结果，失败返回 null */
+  onFree: (input: string) => Promise<ActionResponse | null>;
 }
 
 export function ActionPanel(p: Props) {
@@ -28,9 +36,74 @@ export function ActionPanel(p: Props) {
   const canCultivate = p.player.stamina >= RULES.cultivate.staminaCost;
   const preview = p.job ? idlePreview(p.player, p.job, now) : null;
   const full = p.player.realmProgress >= 100;
+  const [text, setText] = useState('');
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!p.thinking) return setSlow(false);
+    const t = setTimeout(() => setSlow(true), SLOW_MS);
+    return () => clearTimeout(t);
+  }, [p.thinking]);
+  const canSend = p.ai.canInput && !p.busy && text.trim().length > 0;
+  const send = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!canSend) return;
+    const r = await p.onFree(text.trim());
+    if (r?.ai?.executed) setText(''); // 已执行才清空；澄清、失败时保留，方便改几个字重发
+  };
 
   return (
     <>
+      <section className="sec" aria-label="自由行动">
+        <h4>
+          自由行动<small>{text.length}/200</small>
+        </h4>
+        <form className="free" onSubmit={send}>
+          <input
+            id="free-input"
+            type="text"
+            maxLength={200}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={p.ai.canInput ? '想做什么？比如：打坐一会儿' : (p.ai.reason ?? 'AI 暂不可用')}
+            disabled={!p.ai.canInput || p.thinking}
+            aria-label="自由行动输入"
+          />
+          <button type="submit" disabled={!canSend}>
+            {p.thinking ? '处理中' : '行动'}
+          </button>
+        </form>
+        {p.ai.canInput && (
+          <div className="hints">
+            {FREE_HINTS.map((h) => (
+              <button key={h} type="button" className="hint" disabled={p.thinking} onClick={() => setText(h)}>
+                {h}
+              </button>
+            ))}
+          </div>
+        )}
+        {p.thinking ? (
+          <div className="reply" role="status">
+            <span className="l">{slow ? 'AI 有点慢，可以继续等，或改用固定行动' : '正在理解你的意思'}</span>
+            <span className="dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          </div>
+        ) : p.aiReply ? (
+          <div className={`reply ${p.aiReply.tone}`} role="status">
+            <span className="l">{p.aiReply.label}</span>
+            {p.aiReply.text}
+          </div>
+        ) : (
+          !p.ai.canInput && (
+            <div className="reply warn" role="status">
+              {p.ai.reason}
+            </div>
+          )
+        )}
+      </section>
+
       <section className="sec" aria-label="放置修炼">
         <h4>放置修炼</h4>
         {p.job && preview ? (
@@ -97,13 +170,6 @@ export function ActionPanel(p: Props) {
           <span>{bt.text}</span>
         </button>
       </section>
-
-      <form className="free" onSubmit={(e) => e.preventDefault()}>
-        <input type="text" maxLength={200} placeholder="自由行动将在 AI 接入后开放（S3）" disabled aria-label="自由行动输入" />
-        <button type="submit" disabled>
-          行动
-        </button>
-      </form>
 
       {p.error ? (
         <p className="err" role="alert">

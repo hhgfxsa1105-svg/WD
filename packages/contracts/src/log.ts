@@ -44,6 +44,8 @@ export const LogRecordSchema = z
       .nullable(),
     /** 补充说明，如「修炼已圆满，可以尝试突破了」 */
     note: z.string().max(200).nullable(),
+    /** 交给 AI 叙事的行动：pending=true 表示结算已生效、叙事待补（可对该行动重试叙事）；旧记录与不叙事的行动没有此字段 */
+    narration: z.object({ actionId: z.string().min(1), pending: z.boolean() }).strict().nullable().optional(),
   })
   .strict();
 export type LogRecord = z.infer<typeof LogRecordSchema>;
