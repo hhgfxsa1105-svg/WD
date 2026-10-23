@@ -24,16 +24,17 @@
 
 ## *技术栈*
 
-层级| 技术
-前端| Vue 3、TypeScript、Vite
-UI 样式| Tailwind CSS
-后端| Node.js、Fastify
-数据库| PostgreSQL
-数据访问| Drizzle ORM
-数据校验| Zod
-自动化测试| Vitest
-AI 接入| 服务端模型适配层
-版本管理| Git、GitHub
+| 层级 | 技术 |
+|:---:|:---:|
+| 前端 | Vue 3、TypeScript、Vite |
+| UI 样式 | Tailwind CSS |
+| 后端 | Node.js、Fastify |
+| 数据库 | PostgreSQL |
+| 数据访问 | Drizzle ORM |
+| 数据校验 | Zod |
+| 自动化测试 | Vitest |
+| AI 接入 | 服务端模型适配层 |
+| 版本管理 | Git、GitHub |
 
 以上为项目计划采用的技术基线，具体依赖版本及部署方案将在开发过程中确定。
 
