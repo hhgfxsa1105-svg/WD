@@ -113,3 +113,34 @@ describe('物品定义', () => {
     expect(() => toInventoryItems([{ itemId: 'bogus', quantity: 1 }])).toThrow();
   });
 });
+
+describe('收益效率（离线折算）', () => {
+  const noBonus = () => p0({ title: null, epithet: null, fate: null });
+
+  it('效率 0.5：同样时间片的进度减半，所需时间片翻倍', () => {
+    const full = settleIdleCultivation(noBonus(), DEFAULT_METHOD_ID, 100, 1); // 100 × 0.2 = 20
+    const half = settleIdleCultivation(noBonus(), DEFAULT_METHOD_ID, 100, 0.5); // 100 × 0.1 = 10
+    expect(full.player.realmProgress).toBe(20);
+    expect(half.player.realmProgress).toBe(10);
+    expect(half.ticksUsed).toBe(100);
+    expect(settleIdleCultivation(noBonus(), DEFAULT_METHOD_ID, 100, 0.5).changes).toEqual([{ stat: 'realmProgress', delta: 10 }]);
+  });
+
+  it('效率下不足 1 点不消耗时间片', () => {
+    expect(settleIdleCultivation(noBonus(), DEFAULT_METHOD_ID, 9, 0.5).ticksUsed).toBe(0); // 0.9
+  });
+
+  it('内力同比折算', () => {
+    const h = noBonus();
+    h.realm = 'houtian';
+    h.neili = { current: 0, max: 600 };
+    const full = settleIdleCultivation(h, DEFAULT_METHOD_ID, 100, 1).player.neili!.current; // 100 × 0.5 = 50
+    const half = settleIdleCultivation(h, DEFAULT_METHOD_ID, 200, 0.5).player.neili!.current; // 200 × 0.5 × 0.5 = 50
+    expect(full).toBe(50);
+    expect(half).toBe(50);
+  });
+
+  it('默认效率为 1（兼容在线结算）', () => {
+    expect(settleIdleCultivation(noBonus(), DEFAULT_METHOD_ID, 100).player.realmProgress).toBe(20);
+  });
+});

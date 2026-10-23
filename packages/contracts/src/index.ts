@@ -6,6 +6,7 @@ export * from './player.js';
 export * from './action.js';
 export * from './inventory.js';
 export * from './cultivation.js';
+export * from './world.js';
 export * from './error.js';
 
 export const HealthResponseSchema = z.object({

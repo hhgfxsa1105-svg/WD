@@ -36,7 +36,7 @@ npm start                # 构建前端并由本机服务托管：http://127.0.0
 | `npm run db:generate` | 修改 `schema.ts` 后生成新的迁移文件到 `db/migrations` |
 | `npm run typecheck` | 全工作区 TypeScript 类型检查 |
 | `npm test` | 运行 Vitest（单元与集成） |
-| `npm run test:e2e` | 浏览器端到端 26 条（需 `npx playwright install chromium`，或设置 `PW_CHROMIUM_PATH`） |
+| `npm run test:e2e` | 浏览器端到端 32 条（需 `npx playwright install chromium`，或设置 `PW_CHROMIUM_PATH`） |
 
 ## 目录结构
 ```
@@ -68,7 +68,7 @@ docs/                 项目文档与任务记录
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | S1 原型 | T-001 ~ T-005 ✅ · T-006 原型验收与说明 ✅（S1 待验收签核，见 [S1 审计报告](docs/audit/S1-report.md)） | 待验收 |
-| S2 规则与时间 | T-007 核心规则纯函数 ✅（待验收，见 [规则说明](docs/rules.md)）· T-008 修炼任务与结算（后端+前端）✅（待验收）· T-009 ~ T-011 | 进行中 |
+| S2 规则与时间 | T-007 核心规则纯函数 ✅（待验收，见 [规则说明](docs/rules.md)）· T-008 修炼任务与结算 ✅ · T-009 世界时钟与离线收益 ✅（待验收）· T-010 ~ T-011 | 进行中 |
 | S3 AI 行动 | 结构化解析、判定、叙事分离 | 未开始 |
 | S4 NPC 记忆 | 关系、记忆、任务状态机 | 未开始 |
 | S5 动态江湖 | 地点、势力、世界事件 | 未开始 |

@@ -181,3 +181,21 @@ describe('背包与修炼任务约束', () => {
     expect((d.sqlite.prepare('select count(*) c from cultivation_jobs').get() as { c: number }).c).toBe(0);
   });
 });
+
+describe('离线与世界时钟的数据结构', () => {
+  it('cultivation_jobs.last_checked_at 可为空（旧数据）', () => {
+    const d = fresh();
+    insertPlayer(d);
+    d.sqlite
+      .prepare("insert into cultivation_jobs (id, player_id, method_id, status, started_at, last_settled_at) values ('j','p1','m','running',1,1)")
+      .run();
+    expect((d.sqlite.prepare('select last_checked_at v from cultivation_jobs').get() as { v: number | null }).v).toBeNull();
+  });
+
+  it('world_clock：高水位非负、主键唯一', () => {
+    const d = fresh();
+    d.sqlite.prepare("insert into world_clock (id, high_water_at) values ('main', 5)").run();
+    expect(() => d.sqlite.prepare("insert into world_clock (id, high_water_at) values ('main', 6)").run()).toThrow(/UNIQUE|PRIMARY/);
+    expect(() => d.sqlite.prepare("insert into world_clock (id, high_water_at) values ('x', -1)").run()).toThrow(/CHECK/);
+  });
+});

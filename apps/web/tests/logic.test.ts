@@ -76,3 +76,35 @@ describe('幂等键仓库', () => {
     expect(s.keyFor('bt:pill')).toBe('key-3');
   });
 });
+
+import { offlineRuleText, offlineSummary } from '../src/offline';
+import { formatDuration } from '../src/time';
+
+describe('formatDuration', () => {
+  it.each([
+    [0, '不足 1 分钟'],
+    [59_999, '不足 1 分钟'],
+    [60_000, '1 分钟'],
+    [45 * 60_000, '45 分钟'],
+    [3_600_000, '1 小时'],
+    [8 * 3_600_000 + 20 * 60_000, '8 小时 20 分'],
+    [12 * 3_600_000, '12 小时'],
+    [-5, '不足 1 分钟'],
+  ])('%i ms → %s', (ms, text) => expect(formatDuration(ms)).toBe(text));
+});
+
+describe('离线说明', () => {
+  it('未触顶：显示离线时长、计入时长与效率', () => {
+    expect(offlineSummary({ gapMs: 7_200_000, countedMs: 7_200_000, capped: false, efficiencyPercent: 50 })).toBe(
+      '离线 2 小时，计入 2 小时（效率 50%）',
+    );
+  });
+  it('触顶：注明已达上限', () => {
+    expect(offlineSummary({ gapMs: 48 * 3_600_000, countedMs: 12 * 3_600_000, capped: true, efficiencyPercent: 50 })).toBe(
+      '离线 48 小时，已达上限，仅计入 12 小时（效率 50%）',
+    );
+  });
+  it('规则一句话', () => {
+    expect(offlineRuleText(12 * 3_600_000, 50)).toBe('离线最多计入 12 小时，按 50% 效率');
+  });
+});

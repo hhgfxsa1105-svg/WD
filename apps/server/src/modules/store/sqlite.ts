@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { PlayerStateSchema, type Honorific, type PlayerState } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import type { Db } from '../../db/connection.js';
-import { cultivationJobs, inventory, playerStates, players } from '../../db/schema.js';
+import { cultivationJobs, inventory, playerStates, players, worldClock } from '../../db/schema.js';
 import { AppError } from '../../shared/errors.js';
 import type { CultivationJobRecord, GameStore, GameTx } from './types.js';
 
@@ -115,7 +115,16 @@ function makeTx(db: Executor): GameTx {
         .from(cultivationJobs)
         .where(and(eq(cultivationJobs.playerId, PLAYER_ID), eq(cultivationJobs.status, 'running')))
         .get();
-      return r ? { id: r.id, methodId: r.methodId, status: 'running', startedAt: r.startedAt, lastSettledAt: r.lastSettledAt } : null;
+      return r
+        ? {
+            id: r.id,
+            methodId: r.methodId,
+            status: 'running',
+            startedAt: r.startedAt,
+            lastSettledAt: r.lastSettledAt,
+            lastCheckedAt: r.lastCheckedAt ?? r.lastSettledAt, // 旧数据没有接触时间，按结算点处理
+          }
+        : null;
     },
     saveJob(job: CultivationJobRecord) {
       const values = {
@@ -125,10 +134,11 @@ function makeTx(db: Executor): GameTx {
         status: job.status,
         startedAt: job.startedAt,
         lastSettledAt: job.lastSettledAt,
+        lastCheckedAt: job.lastCheckedAt,
       };
       db.insert(cultivationJobs)
         .values(values)
-        .onConflictDoUpdate({ target: cultivationJobs.id, set: { status: job.status, lastSettledAt: job.lastSettledAt, updatedAt: Date.now() } })
+        .onConflictDoUpdate({ target: cultivationJobs.id, set: { status: job.status, lastSettledAt: job.lastSettledAt, lastCheckedAt: job.lastCheckedAt, updatedAt: Date.now() } })
         .run();
     },
   };
@@ -173,6 +183,15 @@ export function ensureSeed(db: Db, initial: PlayerState = createInitialPlayer())
 export function createSqliteGameStore(db: Db, initial?: PlayerState): GameStore {
   ensureSeed(db, initial);
   return {
+    worldClock: {
+      load: () => db.select({ t: worldClock.highWaterAt }).from(worldClock).where(eq(worldClock.id, 'main')).get()?.t ?? null,
+      save: (t) => {
+        db.insert(worldClock)
+          .values({ id: 'main', highWaterAt: t })
+          .onConflictDoUpdate({ target: worldClock.id, set: { highWaterAt: t, updatedAt: Date.now() } })
+          .run();
+      },
+    },
     read: (fn) => db.transaction((tx) => fn(makeTx(tx)), { behavior: 'deferred' }),
     transact: (fn) => db.transaction((tx) => fn(makeTx(tx)), { behavior: 'immediate' }),
   };

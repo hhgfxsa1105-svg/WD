@@ -8,15 +8,6 @@ export const METHODS: Record<string, { name: string; grade: Grade }> = {
 };
 export const DEFAULT_METHOD_ID = 'basic_breathing';
 
-/**
- * 整数时间片数量：只结算完整的片，不足一片的零头留到下次，因此频繁结算不会多拿收益。
- * 时钟回拨（now < lastSettledAt）按 0 处理；maxElapsedMs 为单次结算可计入的最长时间（离线上限，T-009 配置）。
- */
-export function ticksBetween(lastSettledAt: number, now: number, maxElapsedMs = Number.POSITIVE_INFINITY): number {
-  const elapsed = Math.min(Math.max(0, now - lastSettledAt), maxElapsedMs);
-  return Math.floor(elapsed / IDLE_CULTIVATION.tickMs);
-}
-
 export interface IdleSettlement {
   player: PlayerState;
   changes: StateChange[];
@@ -30,8 +21,9 @@ export interface IdleSettlement {
  * 放置修炼结算（纯函数）。ticks 为可计入的完整时间片数。
  * 进度 = floor(ticks × 每片进度 × 功法系数 × (1+名号加成))；只消耗产出这些进度所需的最少时间片。
  * 后天及以上同时按已消耗的时间片获得内力。进度封顶 100，内力封顶上限。
+ * efficiency 为收益效率（在线 1，离线见 OFFLINE.efficiency），进度与内力同比缩放。
  */
-export function settleIdleCultivation(player: PlayerState, methodId: string, ticks: number): IdleSettlement {
+export function settleIdleCultivation(player: PlayerState, methodId: string, ticks: number, efficiency = 1): IdleSettlement {
   const method = METHODS[methodId];
   if (!method) throw new Error(`未知功法：${methodId}`);
   const none = { player, changes: [], ticksUsed: 0, completed: player.realmProgress >= 100 };
@@ -39,7 +31,7 @@ export function settleIdleCultivation(player: PlayerState, methodId: string, tic
 
   const coef = METHOD_EXP_COEFFICIENT[method.grade];
   const bonus = Math.max(-90, expBonusPercent(player));
-  const perTick = (IDLE_CULTIVATION.progressPerTick * coef * (100 + bonus)) / 100;
+  const perTick = (IDLE_CULTIVATION.progressPerTick * coef * efficiency * (100 + bonus)) / 100;
   const raw = Math.floor(ticks * perTick + 1e-9);
   if (raw <= 0) return none;
 
@@ -51,7 +43,7 @@ export function settleIdleCultivation(player: PlayerState, methodId: string, tic
 
   let neili = player.neili;
   if (neili && realmHasNeili(player.realm)) {
-    const gain = Math.min(neili.max - neili.current, Math.floor(ticksUsed * IDLE_CULTIVATION.neiliPerTick * coef + 1e-9));
+    const gain = Math.min(neili.max - neili.current, Math.floor(ticksUsed * IDLE_CULTIVATION.neiliPerTick * coef * efficiency + 1e-9));
     neili = { ...neili, current: neili.current + gain };
     changes.push({ stat: 'neili', delta: gain });
   }

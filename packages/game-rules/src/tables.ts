@@ -59,3 +59,13 @@ export const IDLE_CULTIVATION = {
   progressPerTick: 0.2,
   neiliPerTick: 0.5,
 } as const;
+
+/**
+ * 离线收益：距上次接触（打开页面、结算、开始/停止）超过 thresholdMs 视为离线。
+ * 离线结算单次最多计入 capMs，且只按 efficiency 的效率；在线（含页面每 30 秒的自动结算）全额。
+ */
+export const OFFLINE = {
+  thresholdMs: 5 * 60_000,
+  capMs: 12 * 60 * 60_000,
+  efficiency: 0.5,
+} as const;

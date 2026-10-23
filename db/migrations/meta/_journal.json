@@ -22,6 +22,13 @@
       "when": 1792725575449,
       "tag": "0002_inventory_and_cultivation",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792727041048,
+      "tag": "0003_offline_and_world_clock",
+      "breakpoints": true
     }
   ]
 }

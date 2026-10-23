@@ -52,12 +52,19 @@ function makeTx(s: State): GameTx {
 }
 
 export function createMemoryGameStore(initial: PlayerState = createInitialPlayer()): GameStore {
+  let highWater: number | null = null;
   let state: State = {
     player: PlayerStateSchema.parse(initial),
     items: new Map(INITIAL_INVENTORY.map((i) => [i.itemId, i.quantity])),
     jobs: new Map(),
   };
   return {
+    worldClock: {
+      load: () => highWater,
+      save: (t) => {
+        highWater = Math.max(highWater ?? 0, t);
+      },
+    },
     read: (fn) => fn(makeTx(cloneState(state))),
     transact(fn) {
       const draft = cloneState(state);

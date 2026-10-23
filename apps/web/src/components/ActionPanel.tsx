@@ -1,13 +1,16 @@
 import { RULES } from '@jhz/game-rules';
-import type { CultivationJob, PlayerState } from '@jhz/contracts';
+import type { CultivationJob, PlayerState, WorldTimeResponse } from '@jhz/contracts';
 import { breakthroughView } from '../breakthrough';
 import { idlePreview } from '../idle';
+import { offlineRuleText } from '../offline';
+import { formatDuration } from '../time';
 import { useNow } from './useNow';
 
 interface Props {
   player: PlayerState;
   job: CultivationJob | null;
   serverOffset: number;
+  world: WorldTimeResponse | null;
   busy: boolean;
   error: string | null;
   notice: string | null;
@@ -59,6 +62,17 @@ export function ActionPanel(p: Props) {
           </div>
         )}
       </section>
+
+      {p.world && (
+        <p className="soon rule" aria-label="离线规则">
+          {offlineRuleText(p.world.offline.capMs, p.world.offline.efficiencyPercent)}
+        </p>
+      )}
+      {p.world && p.world.clockBehindMs > 0 && (
+        <p className="err" role="alert">
+          检测到系统时间早于游戏时间 {formatDuration(p.world.clockBehindMs)}，游戏时间已暂停，待系统时间追平后继续。
+        </p>
+      )}
 
       <section className="sec" aria-label="固定行动">
         <h4>固定行动</h4>

@@ -4,7 +4,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { HealthResponse } from '@jhz/contracts';
 import { createActionService } from './modules/action/service.js';
-import { createCultivationService } from './modules/cultivation/service.js';
+import { createCultivationService, type OfflinePolicy } from './modules/cultivation/service.js';
 import { createMemoryGameStore } from './modules/store/memory.js';
 import type { GameStore } from './modules/store/types.js';
 import { registerGameRoutes } from './modules/routes.js';
@@ -18,11 +18,19 @@ export interface AppDeps {
   store?: GameStore;
   clock?: Clock;
   rng?: Rng;
-  /** 放置修炼单次结算最多计入的时长（离线上限） */
-  maxElapsedMs?: number;
+  /** 覆盖默认离线策略（测试用） */
+  offline?: Partial<OfflinePolicy>;
+  /** 系统时间落后于世界时间的时长；仅 WorldClock 提供 */
+  clockBehindMs?: () => number;
 }
 
-export async function buildApp({ store = createMemoryGameStore(), clock = systemClock, rng = secureRng, maxElapsedMs }: AppDeps = {}) {
+export async function buildApp({
+  store = createMemoryGameStore(),
+  clock = systemClock,
+  rng = secureRng,
+  offline,
+  clockBehindMs = () => 0,
+}: AppDeps = {}) {
   const app = Fastify({ logger: false, genReqId: newRequestId, bodyLimit: 16 * 1024 });
 
   registerErrorHandling(app);
@@ -36,7 +44,9 @@ export async function buildApp({ store = createMemoryGameStore(), clock = system
   registerGameRoutes(app, {
     store,
     actions: createActionService({ store, clock, rng }),
-    cultivation: createCultivationService({ store, clock, maxElapsedMs }),
+    cultivation: createCultivationService({ store, clock, offline }),
+    clock,
+    clockBehindMs,
   });
 
   if (existsSync(WEB_DIST)) {

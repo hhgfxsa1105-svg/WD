@@ -1,17 +1,33 @@
 import type { FastifyInstance } from 'fastify';
-import { InventoryResponseSchema, PlayerStateSchema, SubmitActionRequestSchema } from '@jhz/contracts';
+import { InventoryResponseSchema, PlayerStateSchema, SubmitActionRequestSchema, WorldTimeResponseSchema } from '@jhz/contracts';
 import { parseWith } from '../shared/errors.js';
 import type { ActionService } from './action/service.js';
 import type { CultivationService } from './cultivation/service.js';
 import type { GameStore } from './store/types.js';
+import type { Clock } from '../shared/runtime.js';
 
 interface Deps {
   store: GameStore;
   actions: ActionService;
   cultivation: CultivationService;
+  clock: Clock;
+  /** 系统时间落后于世界时间的时长（仅 WorldClock 提供），正常为 0 */
+  clockBehindMs: () => number;
 }
 
-export function registerGameRoutes(app: FastifyInstance, { store, actions, cultivation }: Deps) {
+export function registerGameRoutes(app: FastifyInstance, { store, actions, cultivation, clock, clockBehindMs }: Deps) {
+  app.get('/api/v1/world/time', async () =>
+    WorldTimeResponseSchema.parse({
+      serverNow: clock.now(),
+      offline: {
+        thresholdMs: cultivation.policy.thresholdMs,
+        capMs: cultivation.policy.capMs,
+        efficiencyPercent: Math.round(cultivation.policy.efficiency * 100),
+      },
+      clockBehindMs: clockBehindMs(),
+    }),
+  );
+
   app.get('/api/v1/player/state', async () => PlayerStateSchema.parse(store.read((tx) => tx.player())));
   app.get('/api/v1/player/inventory', async () => InventoryResponseSchema.parse({ items: store.read((tx) => tx.inventory()) }));
 

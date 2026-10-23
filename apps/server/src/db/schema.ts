@@ -82,6 +82,8 @@ export const cultivationJobs = sqliteTable(
     status: text('status').notNull(),
     startedAt: integer('started_at').notNull(),
     lastSettledAt: integer('last_settled_at').notNull(),
+    /** 上次接触（结算、开始、停止）时间，用于区分在线与离线；旧数据为 NULL，按 lastSettledAt 处理 */
+    lastCheckedAt: integer('last_checked_at'),
     createdAt: integer('created_at').notNull().default(nowMs),
     updatedAt: integer('updated_at').notNull().default(nowMs),
   },
@@ -92,4 +94,15 @@ export const cultivationJobs = sqliteTable(
     uniqueIndex('cultivation_jobs_one_running').on(t.playerId).where(sql`${t.status} = 'running'`),
     index('cultivation_jobs_player_idx').on(t.playerId),
   ],
+);
+
+/** 世界时钟的单调高水位：服务端见过的最晚时间，防止系统时间被调到过去后重复计入时间 */
+export const worldClock = sqliteTable(
+  'world_clock',
+  {
+    id: text('id').primaryKey(),
+    highWaterAt: integer('high_water_at').notNull(),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [check('world_clock_nonneg', sql`${t.highWaterAt} >= 0`)],
 );

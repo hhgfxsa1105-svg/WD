@@ -30,7 +30,7 @@ const spend = (p: PlayerState): PlayerState => {
 };
 const PILL = 'pill_breakthrough_fan';
 const qty = (s: GameStore, id = PILL) => s.read((tx) => tx.inventory().find((i) => i.itemId === id)?.quantity ?? 0);
-const job = (id: string, over = {}) => ({ id, methodId: 'basic_breathing', status: 'running' as const, startedAt: 1000, lastSettledAt: 1000, ...over });
+const job = (id: string, over = {}) => ({ id, methodId: 'basic_breathing', status: 'running' as const, startedAt: 1000, lastSettledAt: 1000, lastCheckedAt: 1000, ...over });
 
 describe.each(impls)('GameStore 契约：%s', (_name, make) => {
   it('初始为种子角色（版本 0）、1 枚凡阶突破丹、无修炼任务', () => {

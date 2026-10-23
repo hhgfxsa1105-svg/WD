@@ -41,8 +41,10 @@ async function waitHealthy(url: string): Promise<void> {
 }
 
 /** 每个用例使用独立的临时存档与独立端口，互不影响 */
-export const test = base.extend<{ server: GameServer }>({
-  server: async ({}, use) => {
+export const test = base.extend<{ server: GameServer; realOffline: boolean }>({
+  /** 为 true 时使用真实的离线策略（阈值 5 分钟、上限 12 小时、效率 50%） */
+  realOffline: [false, { option: true }],
+  server: async ({ realOffline }, use) => {
     const dir = mkdtempSync(join(tmpdir(), 'jhz-e2e-'));
     const port = await freePort();
     const url = `http://127.0.0.1:${port}`;
@@ -50,7 +52,13 @@ export const test = base.extend<{ server: GameServer }>({
 
     const start = async () => {
       child = spawn('node_modules/.bin/tsx', ['e2e/test-server.ts'], {
-        env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', DB_PATH: join(dir, 'save.sqlite') },
+        env: {
+          ...process.env,
+          PORT: String(port),
+          HOST: '127.0.0.1',
+          DB_PATH: join(dir, 'save.sqlite'),
+          ...(realOffline ? { E2E_REAL_OFFLINE: '1' } : {}),
+        },
         stdio: 'ignore',
       });
       await waitHealthy(url);

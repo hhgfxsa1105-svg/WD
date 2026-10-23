@@ -4,12 +4,14 @@ import {
   ErrorResponseSchema,
   InventoryResponseSchema,
   PlayerStateSchema,
+  WorldTimeResponseSchema,
   type ActionResponse,
   type CultivationResponse,
   type FixedActionId,
   type InventoryItem,
   type PlayerState,
   type SubmitActionRequest,
+  type WorldTimeResponse,
 } from '@jhz/contracts';
 
 /** 接口错误：message 可直接展示给玩家 */
@@ -72,3 +74,5 @@ export const fetchCultivation = (): Promise<CultivationResponse> => request('/ap
 export const startCultivation = (): Promise<CultivationResponse> => postJson('/api/v1/cultivation/start', CultivationResponseSchema);
 export const settleCultivation = (): Promise<CultivationResponse> => postJson('/api/v1/cultivation/settle', CultivationResponseSchema);
 export const stopCultivation = (): Promise<CultivationResponse> => postJson('/api/v1/cultivation/stop', CultivationResponseSchema);
+
+export const fetchWorldTime = (): Promise<WorldTimeResponse> => request('/api/v1/world/time', WorldTimeResponseSchema);

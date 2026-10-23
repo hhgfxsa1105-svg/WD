@@ -57,6 +57,7 @@ export function App() {
                 player={g.player}
                 job={g.job}
                 serverOffset={g.serverOffset}
+                world={g.world}
                 busy={g.busy}
                 error={modal ? null : g.error}
                 notice={g.notice}

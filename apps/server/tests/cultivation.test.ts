@@ -9,15 +9,19 @@ import { openDatabase } from '../src/db/connection.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { createMemoryGameStore } from '../src/modules/store/memory.js';
 import { createSqliteGameStore } from '../src/modules/store/sqlite.js';
+import type { OfflinePolicy } from '../src/modules/cultivation/service.js';
 import type { GameStore } from '../src/modules/store/types.js';
 
 const T0 = 1_800_000_000_000;
 const MIN = IDLE_CULTIVATION.tickMs;
 
-async function setup(opts: { player?: PlayerState; store?: GameStore; maxElapsedMs?: number } = {}) {
+/** 默认视为始终在线（阈值无穷大），专注测试结算本身；离线策略见下方专门用例，那里使用真实默认策略 */
+const ALWAYS_ONLINE: Partial<OfflinePolicy> = { thresholdMs: Number.MAX_SAFE_INTEGER };
+
+async function setup(opts: { player?: PlayerState; store?: GameStore; offline?: Partial<OfflinePolicy> } = {}) {
   const store = opts.store ?? createMemoryGameStore(opts.player);
   const time = { t: T0 };
-  const app = await buildApp({ store, clock: { now: () => time.t }, maxElapsedMs: opts.maxElapsedMs });
+  const app = await buildApp({ store, clock: { now: () => time.t }, offline: opts.offline ?? ALWAYS_ONLINE });
   const call = async (method: 'GET' | 'POST', path: string) => {
     const res = await app.inject({ method, url: `/api/v1/cultivation${path}` });
     return { status: res.statusCode, body: res.json() as unknown };
@@ -125,17 +129,6 @@ describe('放置修炼', () => {
     expect(r.job!.lastSettledAt).toBe(T0);
   });
 
-  it('离线上限：超出的时间作废，且不会在下次再次计入', async () => {
-    const s = await setup({ maxElapsedMs: 100 * MIN });
-    await s.start();
-    s.time.t += 48 * 60 * MIN;
-    const a = await s.settle();
-    expect(a.ticks).toBeLessThanOrEqual(100);
-    expect(a.player.realmProgress).toBeLessThanOrEqual(21);
-    const b = await s.settle();
-    expect(b.changes).toEqual([]);
-  });
-
   it('进度圆满：自动结算到 100 并停止，提示可以突破', async () => {
     const s = await setup({ player: { ...createInitialPlayer(), realmProgress: 99 } });
     await s.start();
@@ -210,5 +203,158 @@ describe('持久化：重启后修炼继续、不重复领取', () => {
     expect((await s3.settle()).changes).toEqual([]);
     expect(s3.player().realmProgress).toBe(2);
     c.d.close();
+  });
+});
+
+describe('离线收益（真实默认策略：阈值 5 分钟、上限 12 小时、效率 50%）', () => {
+  const REAL = {}; // 不覆盖，使用 OFFLINE 默认值
+  const H = 60 * MIN;
+
+  it('在线（间隔不超过阈值，如页面每 30 秒自动结算）：全额，且不带离线说明', async () => {
+    const s = await setup({ offline: REAL });
+    await s.start();
+    let total = 0;
+    for (let i = 0; i < 20; i++) {
+      s.time.t += 30_000; // 每 30 秒一次，共 10 分钟
+      const r = await s.settle();
+      expect(r.offline).toBeNull();
+      total += r.changes.find((c) => c.stat === 'realmProgress')?.delta ?? 0;
+    }
+    expect(total).toBe(2); // 10 分钟 × 0.21，全额
+  });
+
+  it('零头造成结算点滞后，也不会把在线结算误判为离线（按「上次接触」而非结算点判断）', async () => {
+    const s = await setup({ offline: REAL });
+    await s.start();
+    for (let i = 0; i < 120; i++) {
+      s.time.t += 30_000; // 1 小时，每 30 秒结算；结算点会因零头滞后数分钟
+      expect((await s.settle()).offline).toBeNull();
+    }
+    expect(s.player().realmProgress).toBe(12); // 60 × 0.21 = 12.6 → 12
+  });
+
+  it('离线：按 50% 效率结算，并返回离线说明', async () => {
+    const s = await setup({ offline: REAL });
+    await s.start();
+    s.time.t += 2 * H;
+    const r = await s.settle();
+    expect(r.offline).toEqual({ gapMs: 2 * H, countedMs: 2 * H, capped: false, efficiencyPercent: 50 });
+    expect(r.player.realmProgress).toBe(12); // 120 × 0.21 × 0.5 = 12.6 → 12
+  });
+
+  it('离线超过 12 小时只计入 12 小时，超出部分作废，且不会下次再计入', async () => {
+    const s = await setup({ offline: REAL });
+    await s.start();
+    s.time.t += 48 * H;
+    const r = await s.settle();
+    expect(r.offline).toMatchObject({ gapMs: 48 * H, countedMs: 12 * H, capped: true, efficiencyPercent: 50 });
+    expect(r.player.realmProgress).toBe(75); // 720 × 0.21 × 0.5 = 75.6 → 75
+    const again = await s.settle();
+    expect(again.changes).toEqual([]);
+    expect(again.player.realmProgress).toBe(75);
+  });
+
+  it('超长离线无法靠反复结算获得更多：总收益不超过一次封顶', async () => {
+    const s = await setup({ offline: REAL });
+    await s.start();
+    s.time.t += 1000 * H; // 约 41 天
+    await s.settle();
+    const afterFirst = s.player().realmProgress;
+    for (let i = 0; i < 50; i++) await s.settle();
+    expect(s.player().realmProgress).toBe(afterFirst);
+    expect(afterFirst).toBe(75);
+  });
+
+  it('离线封顶造成的进度圆满：停止并提示', async () => {
+    const s = await setup({ offline: REAL, player: { ...createInitialPlayer(), realmProgress: 50 } });
+    await s.start();
+    s.time.t += 48 * H;
+    const r = await s.settle();
+    expect(r.player.realmProgress).toBe(100);
+    expect(r.job).toBeNull();
+    expect(r.notice).toContain('突破');
+  });
+
+  it('离线结算后恢复在线：下一次 30 秒内结算按全额，不再带离线说明', async () => {
+    const s = await setup({ offline: REAL });
+    await s.start();
+    s.time.t += 2 * H;
+    expect((await s.settle()).offline).not.toBeNull();
+    s.time.t += 30_000;
+    expect((await s.settle()).offline).toBeNull();
+  });
+
+  it('离线结算不保留零头：不会在下次在线结算时按全额重新计价', async () => {
+    const s = await setup({ offline: REAL });
+    await s.start();
+    s.time.t += 6 * MIN; // 刚过阈值的短离线：6 × 0.105 = 0.63，不足 1 点
+    const a = await s.settle();
+    expect(a.offline).not.toBeNull();
+    expect(a.changes).toEqual([]);
+    s.time.t += 30_000;
+    const b = await s.settle(); // 之后的在线结算只计这 30 秒，不应把那 6 分钟按全额补回来
+    expect(b.offline).toBeNull();
+    expect(b.changes).toEqual([]);
+    expect(s.player().realmProgress).toBe(0);
+  });
+
+  it('后天及以上：离线内力同比折算', async () => {
+    const s = await setup({ offline: REAL, player: { ...createInitialPlayer(), realm: 'houtian', neili: { current: 0, max: 600 } } });
+    await s.start();
+    s.time.t += 2 * H;
+    const r = await s.settle();
+    // 产出 12 点进度所需最少 115 片；内力 = 115 × 0.5 × 0.5 = 28.75 → 28
+    expect(r.changes).toContainEqual({ stat: 'neili', delta: 28 });
+  });
+
+  it('客户端无法影响离线判定：不接受任何时间或标志参数', async () => {
+    const s = await setup({ offline: REAL });
+    await s.start();
+    s.time.t += 2 * H;
+    const res = await s.app.inject({ method: 'POST', url: '/api/v1/cultivation/settle', payload: { offline: false, now: T0 + 999 * H, efficiency: 1 } });
+    expect(res.statusCode).toBe(200);
+    expect(CultivationResponseSchema.parse(res.json()).player.realmProgress).toBe(12);
+  });
+
+  it('重启跨越长时间：按离线结算且只领取一次', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jhz-off-'));
+    try {
+      const file = join(dir, 'o.sqlite');
+      const open = () => {
+        const d = openDatabase(file);
+        runMigrations(d.db);
+        return { d, store: createSqliteGameStore(d.db) };
+      };
+      const a = open();
+      const s1 = await setup({ store: a.store, offline: REAL });
+      await s1.start();
+      await s1.app.close();
+      a.d.close();
+
+      const b = open();
+      const s2 = await setup({ store: b.store, offline: REAL });
+      s2.time.t = T0 + 30 * H; // 服务停了 30 小时
+      const first = await s2.settle();
+      expect(first.offline).toMatchObject({ capped: true, countedMs: 12 * H });
+      expect(first.player.realmProgress).toBe(75);
+      expect((await s2.settle()).changes).toEqual([]);
+      b.d.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('旧存档（没有接触时间）按结算点处理，不报错', async () => {
+    const d = openDatabase(':memory:');
+    runMigrations(d.db);
+    const store = createSqliteGameStore(d.db);
+    d.sqlite
+      .prepare("insert into cultivation_jobs (id, player_id, method_id, status, started_at, last_settled_at) values ('old','player_1','basic_breathing','running',?,?)")
+      .run(T0, T0);
+    const s = await setup({ store, offline: REAL });
+    s.time.t += 10 * 60_000;
+    const r = await s.settle(); // 距结算点 10 分钟 > 阈值 → 离线
+    expect(r.offline).not.toBeNull();
+    expect(r.player.realmProgress).toBe(1); // 10 × 0.21 × 0.5 = 1.05 → 1
   });
 });

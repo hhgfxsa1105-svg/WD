@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { pillGradeOf } from '@jhz/game-rules';
-import type { ActionResponse, CultivationJob, CultivationResponse, FixedActionId, InventoryItem, PlayerState } from '@jhz/contracts';
+import type {
+  ActionResponse,
+  CultivationJob,
+  CultivationResponse,
+  FixedActionId,
+  InventoryItem,
+  PlayerState,
+  WorldTimeResponse,
+} from '@jhz/contracts';
 import {
   ApiError,
   fetchCultivation,
   fetchInventory,
   fetchPlayerState,
+  fetchWorldTime,
   settleCultivation,
   startCultivation,
   stopCultivation,
@@ -16,6 +25,7 @@ import { createKeyStore } from './api/idempotency';
 import { formatChanges, type LogChip } from './changes';
 import { GRADE_LABEL, REALM_LABEL } from './labels';
 import { INITIAL_LOG, hourLabel, type LogEntry } from './log';
+import { offlineSummary } from './offline';
 
 const AUTO_SETTLE_MS = 30_000;
 const messageOf = (e: unknown): string => (e instanceof ApiError ? e.message : '发生未知错误，请重试');
@@ -25,6 +35,7 @@ export function useGame() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [job, setJob] = useState<CultivationJob | null>(null);
   const [serverOffset, setServerOffset] = useState(0);
+  const [world, setWorld] = useState<WorldTimeResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [log, setLog] = useState<LogEntry[]>(INITIAL_LOG);
   const [busy, setBusy] = useState(false);
@@ -43,12 +54,15 @@ export function useGame() {
       setPlayer(r.player);
       setJob(r.job);
       setServerOffset(r.serverNow - Date.now());
+      const offline = r.offline ? offlineSummary(r.offline) : null;
       if (r.changes.length > 0) {
         append({
           text: '你静坐吐纳，不觉时光流转。',
           chips: formatChanges(r.changes),
-          sub: `放置修炼 · 结算 ${r.ticks} 分钟`,
+          sub: [`放置修炼 · 结算 ${r.ticks} 分钟`, offline].filter(Boolean).join(' · '),
         });
+      } else if (offline) {
+        append({ text: '你离开了一阵，回来时修炼仍在继续。', chips: [], sub: `${offline} · 收益不足 1% 经验` });
       } else if (!quiet) {
         setNotice('暂无可领取的收益');
       }
@@ -77,8 +91,9 @@ export function useGame() {
 
   const load = useCallback(() => {
     setLoadError(null);
-    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation()]).then(
-      async ([p, inv, c]) => {
+    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation(), fetchWorldTime().catch(() => null)]).then(
+      async ([p, inv, c, w]) => {
+        setWorld(w);
         setPlayer(p);
         setInventory(inv);
         setJob(c.job);
@@ -169,6 +184,7 @@ export function useGame() {
     inventory,
     job,
     serverOffset,
+    world,
     loadError,
     log,
     busy,
