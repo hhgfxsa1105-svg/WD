@@ -262,3 +262,24 @@ describe('行动与审计表约束', () => {
     expect((d.sqlite.prepare('select count(*) c from audit_events').get() as { c: number }).c).toBe(0);
   });
 });
+
+describe('AI 调用记录表约束', () => {
+  const add = (d: ReturnType<typeof fresh>, over: Record<string, unknown> = {}) => {
+    const row = { id: crypto.randomUUID(), action_id: null, purpose: 'parse', provider: 'mock', model: 'm', day: '2026-10-23', status: 'ok', attempts: 1, request_chars: 10, created_at: 1, ...over };
+    const cols = Object.keys(row);
+    return d.sqlite.prepare(`insert into ai_call_logs (${cols.join(',')}) values (${cols.map((c) => '@' + c).join(',')})`).run(row);
+  };
+  it('合法记录可插入', () => expect(() => add(fresh())).not.toThrow());
+  it.each([
+    ['用途非法', { purpose: 'chat' }],
+    ['状态非法', { status: 'done' }],
+    ['日期格式非法', { day: '2026/10/23' }],
+    ['日期含多余内容', { day: '2026-10-23x' }],
+    ['次数为负', { attempts: -1 }],
+    ['请求长度为负', { request_chars: -1 }],
+    ['耗时为负', { latency_ms: -1 }],
+    ['外键：行动不存在', { action_id: 'ghost' }],
+  ])('拒绝：%s', (_n, over) => {
+    expect(() => add(fresh(), over)).toThrow(/CHECK|FOREIGN/);
+  });
+});

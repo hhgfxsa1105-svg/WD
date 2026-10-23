@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { loadDotEnv, loadEnv } from './config/env.js';
 import { openDatabase } from './db/connection.js';
+import { createGatewayFromConfig, describeAiConfig, loadAiConfig } from './modules/ai/index.js';
 import { runMigrations } from './db/migrate.js';
 import { createSqliteGameStore } from './modules/store/sqlite.js';
 import { WorldClock } from './shared/world-clock.js';
@@ -15,7 +16,10 @@ const store = createSqliteGameStore(database.db);
 const clock = new WorldClock(store.worldClock, {
   onRegression: (behindMs) => console.warn(`检测到系统时间早于游戏时间 ${Math.round(behindMs / 1000)} 秒，游戏时间暂停，待系统时间追平后继续`),
 });
-const app = await buildApp({ store, clock, clockBehindMs: () => clock.behindMs() });
+const aiConfig = loadAiConfig();
+console.log(describeAiConfig(aiConfig)); // 摘要不含密钥与地址
+const ai = createGatewayFromConfig(aiConfig, store.aiLog, clock);
+const app = await buildApp({ store, clock, ai, clockBehindMs: () => clock.behindMs() });
 await app.listen({ host: env.HOST, port: env.PORT });
 console.log(`江湖志已启动：http://${env.HOST}:${env.PORT}（存档：${env.DB_PATH}）`);
 

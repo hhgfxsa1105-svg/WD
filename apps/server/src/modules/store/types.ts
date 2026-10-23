@@ -67,6 +67,37 @@ export interface GameStore {
   transact<T>(fn: (tx: GameTx) => T): T;
   /** 世界时钟高水位的持久化（独立于游戏事务：时钟只增不减，写入失败不影响游戏结算） */
   worldClock: ClockPersistence;
+  /** AI 调用记录与每日额度，独立于游戏事务 */
+  aiLog: AiCallLogStore;
+}
+
+/** AI 调用记录（只含元数据；不存提示词、回复全文与密钥） */
+export interface AiCallRecord {
+  id: string;
+  actionId: string | null;
+  purpose: 'parse' | 'narrate';
+  provider: string;
+  model: string;
+  day: string;
+  status: 'pending' | 'ok' | 'error';
+  errorKind: string | null;
+  attempts: number;
+  latencyMs: number | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  requestChars: number;
+  responseChars: number | null;
+  createdAt: number;
+}
+
+export interface AiCallLogStore {
+  /** 预占一次额度并返回记录 ID；与「检查是否超限」在同一个同步步骤内完成，因此并发调用不会超出上限 */
+  reserve(e: { actionId: string | null; purpose: 'parse' | 'narrate'; provider: string; model: string; day: string; requestChars: number; at: number }): string;
+  finish(id: string, r: { status: 'ok' | 'error'; errorKind: string | null; attempts: number; latencyMs: number; promptTokens: number | null; completionTokens: number | null; totalTokens: number | null; responseChars: number | null }): void;
+  /** 当日已使用（含 pending 与失败）的调用次数 */
+  usedOn(day: string): number;
+  recent(limit: number): AiCallRecord[];
 }
 
 export interface ClockPersistence {

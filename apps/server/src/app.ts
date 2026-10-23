@@ -4,6 +4,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { HealthResponse } from '@jhz/contracts';
 import { createActionService } from './modules/action/service.js';
+import { createGatewayFromConfig, loadAiConfig, type AiGateway } from './modules/ai/index.js';
 import { createCultivationService, type OfflinePolicy } from './modules/cultivation/service.js';
 import { createMemoryGameStore } from './modules/store/memory.js';
 import type { GameStore } from './modules/store/types.js';
@@ -18,6 +19,8 @@ export interface AppDeps {
   store?: GameStore;
   clock?: Clock;
   rng?: Rng;
+  /** AI 网关；默认未启用 */
+  ai?: AiGateway;
   /** 覆盖默认离线策略（测试用） */
   offline?: Partial<OfflinePolicy>;
   /** 系统时间落后于世界时间的时长；仅 WorldClock 提供 */
@@ -29,6 +32,7 @@ export async function buildApp({
   clock = systemClock,
   rng = secureRng,
   offline,
+  ai = createGatewayFromConfig(loadAiConfig({}), store.aiLog, clock),
   clockBehindMs = () => 0,
 }: AppDeps = {}) {
   const app = Fastify({ logger: false, genReqId: newRequestId, bodyLimit: 16 * 1024 });
@@ -47,6 +51,7 @@ export async function buildApp({
     cultivation: createCultivationService({ store, clock, offline }),
     clock,
     clockBehindMs,
+    ai,
   });
 
   if (existsSync(WEB_DIST)) {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, isNotNull } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNotNull } from 'drizzle-orm';
 import {
   ActionResponseSchema,
   LogRecordSchema,
@@ -11,9 +11,9 @@ import {
 } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import type { Db } from '../../db/connection.js';
-import { actions, auditEvents, cultivationJobs, inventory, playerStates, players, worldClock } from '../../db/schema.js';
+import { actions, aiCallLogs, auditEvents, cultivationJobs, inventory, playerStates, players, worldClock } from '../../db/schema.js';
 import { AppError } from '../../shared/errors.js';
-import type { CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
+import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 /** 单机固定的玩家 ID */
 export const PLAYER_ID = 'player_1';
@@ -280,6 +280,28 @@ export function ensureSeed(db: Db, initial: PlayerState = createInitialPlayer())
 export function createSqliteGameStore(db: Db, initial?: PlayerState): GameStore {
   ensureSeed(db, initial);
   return {
+    aiLog: {
+      reserve(e) {
+        const id = randomUUID();
+        db.insert(aiCallLogs).values({ id, actionId: e.actionId, purpose: e.purpose, provider: e.provider, model: e.model, day: e.day, status: 'pending', requestChars: e.requestChars, createdAt: e.at }).run();
+        return id;
+      },
+      finish(id, r) {
+        db.update(aiCallLogs)
+          .set({ status: r.status, errorKind: r.errorKind, attempts: r.attempts, latencyMs: r.latencyMs, promptTokens: r.promptTokens, completionTokens: r.completionTokens, totalTokens: r.totalTokens, responseChars: r.responseChars })
+          .where(eq(aiCallLogs.id, id))
+          .run();
+      },
+      usedOn: (day) => db.select({ n: count() }).from(aiCallLogs).where(eq(aiCallLogs.day, day)).get()?.n ?? 0,
+      recent: (limit) =>
+        db
+          .select()
+          .from(aiCallLogs)
+          .orderBy(desc(aiCallLogs.createdAt), desc(aiCallLogs.id))
+          .limit(limit)
+          .all()
+          .map((r): AiCallRecord => ({ ...r, purpose: r.purpose as AiCallRecord['purpose'], status: r.status as AiCallRecord['status'] })),
+    },
     worldClock: {
       load: () => db.select({ t: worldClock.highWaterAt }).from(worldClock).where(eq(worldClock.id, 'main')).get()?.t ?? null,
       save: (t) => {

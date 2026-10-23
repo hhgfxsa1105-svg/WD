@@ -161,6 +161,25 @@ describe.each(impls)('GameStore 契约：%s', (_name, make) => {
     expect(s.read((tx) => tx.recentLog(10))).toEqual([]);
   });
 
+  it('AI 调用记录：预占、结束、按日计数、按时间倒序；失败与未结束也计数', () => {
+    const s = make();
+    const e = { actionId: null, purpose: 'parse' as const, provider: 'mock', model: 'm', requestChars: 5 };
+    const a = s.aiLog.reserve({ ...e, day: '2026-10-23', at: 1 });
+    const b = s.aiLog.reserve({ ...e, day: '2026-10-23', at: 2 });
+    s.aiLog.reserve({ ...e, day: '2026-10-24', at: 3 });
+    expect(s.aiLog.usedOn('2026-10-23')).toBe(2);
+    expect(s.aiLog.usedOn('2026-10-24')).toBe(1);
+    expect(s.aiLog.usedOn('2026-10-25')).toBe(0);
+    s.aiLog.finish(a, { status: 'ok', errorKind: null, attempts: 1, latencyMs: 12, promptTokens: 1, completionTokens: 2, totalTokens: 3, responseChars: 9 });
+    s.aiLog.finish(b, { status: 'error', errorKind: 'TIMEOUT', attempts: 0, latencyMs: 30, promptTokens: null, completionTokens: null, totalTokens: null, responseChars: null });
+    const recent = s.aiLog.recent(10);
+    expect(recent.map((r) => r.createdAt)).toEqual([3, 2, 1]);
+    expect(recent.find((r) => r.id === a)).toMatchObject({ status: 'ok', totalTokens: 3, latencyMs: 12 });
+    expect(recent.find((r) => r.id === b)).toMatchObject({ status: 'error', errorKind: 'TIMEOUT' });
+    expect(s.aiLog.usedOn('2026-10-23')).toBe(2);
+    expect(s.aiLog.recent(1)).toHaveLength(1);
+  });
+
   it('可保存后天境界与内力', () => {
     const s = make();
     const saved = s.transact((tx) => tx.savePlayer({ ...tx.player(), realm: 'houtian', neili: { current: 6, max: 60 } }));

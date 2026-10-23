@@ -5,6 +5,7 @@ export * from './limits.js';
 export * from './player.js';
 export * from './action.js';
 export * from './ai-plan.js';
+export * from './ai-status.js';
 export * from './inventory.js';
 export * from './cultivation.js';
 export * from './log.js';

@@ -5,6 +5,7 @@
 | 方法与路径 | 说明 |
 |---|---|
 | `GET /health` | 健康检查 |
+| `GET /ai/status` | AI 功能状态：是否启用、模型名、未启用原因、每日额度与已用次数；**不含任何密钥与地址** |
 | `GET /world/time` | 服务端时间、离线规则（阈值/上限/效率）、`clockBehindMs`（系统时间落后游戏时间的时长，正常为 0） |
 | `GET /player/state` | 当前角色 |
 | `GET /player/inventory` | 背包（名称、评级、数量；数量为 0 的不返回） |

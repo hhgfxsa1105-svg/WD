@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  AiStatusResponseSchema,
   AuditActionResponseSchema,
   InventoryResponseSchema,
   LogResponseSchema,
@@ -13,6 +14,7 @@ import type { ActionService } from './action/service.js';
 import type { CultivationService } from './cultivation/service.js';
 import type { GameStore } from './store/types.js';
 import type { Clock } from '../shared/runtime.js';
+import type { AiGateway } from './ai/gateway.js';
 
 interface Deps {
   store: GameStore;
@@ -21,11 +23,15 @@ interface Deps {
   clock: Clock;
   /** 系统时间落后于世界时间的时长（仅 WorldClock 提供），正常为 0 */
   clockBehindMs: () => number;
+  ai: AiGateway;
 }
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
-export function registerGameRoutes(app: FastifyInstance, { store, actions, cultivation, clock, clockBehindMs }: Deps) {
+export function registerGameRoutes(app: FastifyInstance, { store, actions, cultivation, clock, clockBehindMs, ai }: Deps) {
+  // AI 功能状态：不含任何密钥与地址
+  app.get('/api/v1/ai/status', async () => AiStatusResponseSchema.parse(ai.status()));
+
   app.get('/api/v1/world/time', async () =>
     WorldTimeResponseSchema.parse({
       serverNow: clock.now(),

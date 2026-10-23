@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { LogRecordSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type PlayerState } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
-import type { CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
+import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 interface State {
   player: PlayerState;
@@ -95,6 +95,7 @@ function makeTx(s: State): GameTx {
 
 export function createMemoryGameStore(initial: PlayerState = createInitialPlayer()): GameStore {
   let highWater: number | null = null;
+  const aiCalls: AiCallRecord[] = [];
   let state: State = {
     player: PlayerStateSchema.parse(initial),
     items: new Map(INITIAL_INVENTORY.map((i) => [i.itemId, i.quantity])),
@@ -104,6 +105,19 @@ export function createMemoryGameStore(initial: PlayerState = createInitialPlayer
     seq: 0,
   };
   return {
+    aiLog: {
+      reserve: (e) => {
+        const id = randomUUID();
+        aiCalls.push({ id, actionId: e.actionId, purpose: e.purpose, provider: e.provider, model: e.model, day: e.day, status: 'pending', errorKind: null, attempts: 0, latencyMs: null, promptTokens: null, completionTokens: null, totalTokens: null, requestChars: e.requestChars, responseChars: null, createdAt: e.at });
+        return id;
+      },
+      finish: (id, r) => {
+        const rec = aiCalls.find((x) => x.id === id);
+        if (rec) Object.assign(rec, r);
+      },
+      usedOn: (day) => aiCalls.filter((x) => x.day === day).length,
+      recent: (limit) => structuredClone(aiCalls.slice(-limit).reverse()),
+    },
     worldClock: {
       load: () => highWater,
       save: (t) => {

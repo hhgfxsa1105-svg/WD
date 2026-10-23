@@ -36,6 +36,13 @@
       "when": 1792727749615,
       "tag": "0004_actions_and_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792732713071,
+      "tag": "0005_ai_call_logs",
+      "breakpoints": true
     }
   ]
 }

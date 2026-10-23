@@ -163,3 +163,40 @@ export const auditEvents = sqliteTable(
     check('audit_events_log_json_valid', sql`${t.logJson} is null or json_valid(${t.logJson})`),
   ],
 );
+
+/**
+ * AI 调用记录：只存元数据（用途、模型、耗时、token 用量、状态、长度），
+ * 不存提示词与模型回复全文，也不存密钥。每日调用上限按 day 统计，重启后依然有效。
+ */
+export const aiCallLogs = sqliteTable(
+  'ai_call_logs',
+  {
+    id: text('id').primaryKey(),
+    actionId: text('action_id'),
+    purpose: text('purpose').notNull(),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    /** 本地日期 YYYY-MM-DD，用于每日上限统计 */
+    day: text('day').notNull(),
+    /** pending 表示已预占额度、尚未结束（崩溃后保留，按保守口径计入上限） */
+    status: text('status').notNull(),
+    errorKind: text('error_kind'),
+    attempts: integer('attempts').notNull().default(0),
+    latencyMs: integer('latency_ms'),
+    promptTokens: integer('prompt_tokens'),
+    completionTokens: integer('completion_tokens'),
+    totalTokens: integer('total_tokens'),
+    requestChars: integer('request_chars').notNull(),
+    responseChars: integer('response_chars'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.actionId], foreignColumns: [actions.id] }).onDelete('set null'),
+    index('ai_call_logs_day_idx').on(t.day),
+    check('ai_call_logs_purpose_valid', sql`${t.purpose} in ('parse', 'narrate')`),
+    check('ai_call_logs_status_valid', sql`${t.status} in ('pending', 'ok', 'error')`),
+    check('ai_call_logs_day_format', sql`${t.day} glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'`),
+    check('ai_call_logs_attempts_nonneg', sql`${t.attempts} >= 0`),
+    check('ai_call_logs_nonneg', sql`${t.requestChars} >= 0 and (${t.responseChars} is null or ${t.responseChars} >= 0) and (${t.latencyMs} is null or ${t.latencyMs} >= 0)`),
+  ],
+);
