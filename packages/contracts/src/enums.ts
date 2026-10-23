@@ -1,12 +1,32 @@
 import { z } from 'zod';
 
-export const REALMS = ['mortal', 'initiate', 'adept', 'master', 'grandmaster'] as const;
+/** 境界，按晋级顺序排列；后天（含）以上才拥有内力 */
+export const REALMS = [
+  'body_tempering', // 炼体
+  'opening', // 通窍
+  'houtian', // 后天
+  'xiantian', // 先天
+  'grandmaster', // 宗师
+  'mingshen', // 明神
+  'land_immortal', // 陆地神仙
+] as const;
 export const RealmSchema = z.enum(REALMS);
 export type Realm = z.infer<typeof RealmSchema>;
 
-export const ATTRIBUTE_KEYS = ['strength', 'agility', 'constitution', 'comprehension'] as const;
+/** 评级：功法、头衔、称号、命格共用（凡 / 黄 / 玄 / 地 / 天） */
+export const GRADES = ['fan', 'huang', 'xuan', 'di', 'tian'] as const;
+export const GradeSchema = z.enum(GRADES);
+export type Grade = z.infer<typeof GradeSchema>;
+
+/** 六维：神、力、敏、根、悟、福。魅力为隐藏属性，仅服务端持有，不进入契约 */
+export const ATTRIBUTE_KEYS = ['spirit', 'strength', 'agility', 'constitution', 'comprehension', 'fortune'] as const;
 export const AttributeKeySchema = z.enum(ATTRIBUTE_KEYS);
 export type AttributeKey = z.infer<typeof AttributeKeySchema>;
+
+/** 名号效果类别（数据驱动，由程序结算） */
+export const EFFECT_KINDS = ['attribute_bonus', 'exp_multiplier', 'affinity_modifier', 'chance_modifier'] as const;
+export const EffectKindSchema = z.enum(EFFECT_KINDS);
+export type EffectKind = z.infer<typeof EffectKindSchema>;
 
 export const FIXED_ACTION_IDS = ['cultivate', 'rest'] as const;
 export const FixedActionIdSchema = z.enum(FIXED_ACTION_IDS);

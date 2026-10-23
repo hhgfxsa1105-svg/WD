@@ -3,50 +3,93 @@ import {
   ErrorResponseSchema,
   LIMITS,
   PlayerStateSchema,
+  REALMS,
   SubmitActionRequestSchema,
+  realmHasNeili,
 } from '../src/index.js';
 
+const honor = (grade = 'fan') => ({
+  id: 'h_1',
+  name: '山门弟子',
+  grade,
+  effects: [{ kind: 'exp_multiplier', text: '修炼经验 +5%' }],
+});
+
 const validPlayer = {
-  displayName: '无名侠客',
-  level: 1,
-  realm: 'mortal',
+  displayName: '林惊鸿',
+  realm: 'body_tempering',
+  realmProgress: 0,
   hp: 100,
   maxHp: 100,
   stamina: 50,
   maxStamina: 50,
-  silver: 10,
-  attributes: { strength: 5, agility: 5, constitution: 5, comprehension: 5 },
+  neili: null,
+  currency: { yuanbao: 0, silver: 10, copper: 320 },
+  attributes: { spirit: 5, strength: 5, agility: 5, constitution: 5, comprehension: 5, fortune: 5 },
+  title: honor(),
+  epithet: honor(),
+  fate: honor('xuan'),
+  location: { id: 'loc_qingyun_gate', name: '青云山 · 山门' },
   version: 0,
 };
 
 describe('PlayerStateSchema', () => {
-  it('接受合法状态', () => {
+  it('接受合法状态（炼体无内力）', () => {
     expect(PlayerStateSchema.safeParse(validPlayer).success).toBe(true);
   });
 
+  it('后天及以上必须有内力，且名号可为空', () => {
+    const p = {
+      ...validPlayer,
+      realm: 'houtian',
+      neili: { current: 10, max: 60 },
+      title: null,
+      epithet: null,
+      fate: null,
+    };
+    expect(PlayerStateSchema.safeParse(p).success).toBe(true);
+  });
+
   const bad: [string, Record<string, unknown>][] = [
-    ['银两为负', { silver: -1 }],
-    ['银两超上限', { silver: LIMITS.silverMax + 1 }],
-    ['银两非整数', { silver: 1.5 }],
+    ['炼体却有内力', { neili: { current: 0, max: 10 } }],
+    ['后天却无内力', { realm: 'houtian', neili: null }],
+    ['内力超过上限', { realm: 'houtian', neili: { current: 11, max: 10 } }],
+    ['铜钱为负', { currency: { yuanbao: 0, silver: 0, copper: -1 } }],
+    ['元宝超上限', { currency: { yuanbao: LIMITS.currencyMax + 1, silver: 0, copper: 0 } }],
+    ['银两非整数', { currency: { yuanbao: 0, silver: 1.5, copper: 0 } }],
+    ['货币缺字段', { currency: { silver: 1 } }],
+    ['货币含未知币种', { currency: { yuanbao: 0, silver: 0, copper: 0, gold: 1 } }],
+    ['进度超过 100', { realmProgress: 101 }],
     ['hp 超过 maxHp', { hp: 101 }],
     ['stamina 超过 maxStamina', { stamina: 51 }],
     ['体力为负', { stamina: -1 }],
     ['未知境界', { realm: 'god' }],
-    ['等级越界', { level: 0 }],
+    ['旧境界名', { realm: 'mortal' }],
     ['未知字段', { cheat: true }],
-    ['属性含未知键', { attributes: { ...validPlayer.attributes, luck: 99 } }],
-    ['属性缺字段', { attributes: { strength: 1 } }],
+    ['携带隐藏属性 charm', { charm: 99 }],
+    ['属性含魅力', { attributes: { ...validPlayer.attributes, charm: 99 } }],
+    ['属性缺字段', { attributes: { spirit: 1 } }],
     ['属性越界', { attributes: { ...validPlayer.attributes, strength: LIMITS.attribute.max + 1 } }],
+    ['未知评级', { title: honor('legend') }],
+    ['名号效果类别未知', { title: { ...honor(), effects: [{ kind: 'god_mode', text: 'x' }] } }],
+    ['名号含未知字段', { title: { ...honor(), power: 9999 } }],
+    ['位置缺 id', { location: { name: '山门' } }],
     ['昵称为空白', { displayName: '   ' }],
-    ['数值给字符串', { silver: '10' }],
+    ['数值给字符串', { hp: '10' }],
   ];
   it.each(bad)('拒绝：%s', (_n, patch) => {
     expect(PlayerStateSchema.safeParse({ ...validPlayer, ...patch }).success).toBe(false);
   });
 
   it('拒绝缺字段', () => {
-    const { silver: _s, ...rest } = validPlayer;
+    const { currency: _c, ...rest } = validPlayer;
     expect(PlayerStateSchema.safeParse(rest).success).toBe(false);
+  });
+});
+
+describe('realmHasNeili', () => {
+  it('仅后天及以上有内力', () => {
+    expect(REALMS.map(realmHasNeili)).toEqual([false, false, true, true, true, true, true]);
   });
 });
 
