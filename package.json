@@ -2,6 +2,7 @@
   "name": "jianghu-zhi",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "《江湖志》单机文字放置武侠游戏",
   "workspaces": [
     "apps/*",

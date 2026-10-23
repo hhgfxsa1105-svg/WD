@@ -3,11 +3,14 @@ import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { HealthResponse } from '@jhz/contracts';
+import { newRequestId, registerErrorHandling } from './shared/errors.js';
 
 const WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
 export async function buildApp() {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, genReqId: newRequestId, bodyLimit: 16 * 1024 });
+
+  registerErrorHandling(app);
 
   app.get('/api/v1/health', async (): Promise<HealthResponse> => ({
     status: 'ok',
