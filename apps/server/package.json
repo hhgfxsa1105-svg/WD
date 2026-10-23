@@ -1,0 +1,19 @@
+{
+  "name": "@jhz/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.7",
+    "@jhz/contracts": "*",
+    "@jhz/game-rules": "*",
+    "fastify": "^5.12.7",
+    "tsx": "^4.19.0",
+    "zod": "^3.24.0"
+  }
+}
