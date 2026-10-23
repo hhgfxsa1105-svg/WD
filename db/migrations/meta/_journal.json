@@ -15,6 +15,13 @@
       "when": 1792725039362,
       "tag": "0001_breakthrough_cooldown",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792725575449,
+      "tag": "0002_inventory_and_cultivation",
+      "breakpoints": true
     }
   ]
 }

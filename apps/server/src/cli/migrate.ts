@@ -1,7 +1,7 @@
 import { loadDotEnv, loadEnv } from '../config/env.js';
 import { openDatabase } from '../db/connection.js';
 import { runMigrations } from '../db/migrate.js';
-import { ensureSeed } from '../modules/player/sqlite-store.js';
+import { ensureSeed } from '../modules/store/sqlite.js';
 
 loadDotEnv();
 const env = loadEnv();

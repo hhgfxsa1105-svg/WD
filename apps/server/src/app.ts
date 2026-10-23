@@ -4,17 +4,25 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { HealthResponse } from '@jhz/contracts';
 import { createActionService } from './modules/action/service.js';
-import { createMemoryPlayerStore, type PlayerStore } from './modules/player/store.js';
+import { createCultivationService } from './modules/cultivation/service.js';
+import { createMemoryGameStore } from './modules/store/memory.js';
+import type { GameStore } from './modules/store/types.js';
 import { registerGameRoutes } from './modules/routes.js';
+import type { Rng } from '@jhz/game-rules';
 import { newRequestId, registerErrorHandling } from './shared/errors.js';
+import { secureRng, systemClock, type Clock } from './shared/runtime.js';
 
 const WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
 export interface AppDeps {
-  store?: PlayerStore;
+  store?: GameStore;
+  clock?: Clock;
+  rng?: Rng;
+  /** 放置修炼单次结算最多计入的时长（离线上限） */
+  maxElapsedMs?: number;
 }
 
-export async function buildApp({ store = createMemoryPlayerStore() }: AppDeps = {}) {
+export async function buildApp({ store = createMemoryGameStore(), clock = systemClock, rng = secureRng, maxElapsedMs }: AppDeps = {}) {
   const app = Fastify({ logger: false, genReqId: newRequestId, bodyLimit: 16 * 1024 });
 
   registerErrorHandling(app);
@@ -25,7 +33,11 @@ export async function buildApp({ store = createMemoryPlayerStore() }: AppDeps = 
     version: '0.1.0',
   }));
 
-  registerGameRoutes(app, { store, actions: createActionService(store) });
+  registerGameRoutes(app, {
+    store,
+    actions: createActionService({ store, clock, rng }),
+    cultivation: createCultivationService({ store, clock, maxElapsedMs }),
+  });
 
   if (existsSync(WEB_DIST)) {
     await app.register(fastifyStatic, { root: WEB_DIST });

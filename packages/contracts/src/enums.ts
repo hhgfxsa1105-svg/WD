@@ -33,6 +33,14 @@ export const CHANGE_STATS = ['stamina', 'hp', 'neili', 'realmProgress', 'maxHp',
 export const ChangeStatSchema = z.enum(CHANGE_STATS);
 export type ChangeStat = z.infer<typeof ChangeStatSchema>;
 
+export const ITEM_KINDS = ['breakthrough_pill'] as const;
+export const ItemKindSchema = z.enum(ITEM_KINDS);
+export type ItemKind = z.infer<typeof ItemKindSchema>;
+
+export const CULTIVATION_STATUSES = ['running', 'stopped'] as const;
+export const CultivationStatusSchema = z.enum(CULTIVATION_STATUSES);
+export type CultivationStatus = z.infer<typeof CultivationStatusSchema>;
+
 export const FIXED_ACTION_IDS = ['cultivate', 'rest'] as const;
 export const FixedActionIdSchema = z.enum(FIXED_ACTION_IDS);
 export type FixedActionId = z.infer<typeof FixedActionIdSchema>;

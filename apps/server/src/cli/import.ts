@@ -3,7 +3,7 @@ import { loadDotEnv, loadEnv } from '../config/env.js';
 import { openDatabase } from '../db/connection.js';
 import { runMigrations } from '../db/migrate.js';
 import { parseSaveFile } from '../modules/player/save-file.js';
-import { createSqlitePlayerStore, writePlayerState } from '../modules/player/sqlite-store.js';
+import { createSqliteGameStore, writePlayerState } from '../modules/store/sqlite.js';
 
 loadDotEnv();
 const env = loadEnv();
@@ -23,7 +23,7 @@ try {
 
 const database = openDatabase(env.DB_PATH);
 runMigrations(database.db);
-createSqlitePlayerStore(database.db); // 确保存在可被覆盖的基线
+createSqliteGameStore(database.db); // 确保存在可被覆盖的基线
 if (env.DB_PATH !== ':memory:') {
   const backup = `${env.DB_PATH}.bak-${Date.now()}`;
   database.sqlite.exec(`VACUUM INTO '${backup.replaceAll("'", "''")}'`);

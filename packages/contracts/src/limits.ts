@@ -6,6 +6,7 @@ export const LIMITS = {
   staminaMax: 9999,
   neiliMax: 99_999_999,
   currencyMax: 999_999_999,
+  itemId: { max: 64 },
   idempotencyKey: { min: 8, max: 64 },
   freeInput: { min: 1, max: 200 },
   message: { max: 500 },

@@ -2,14 +2,14 @@ import { buildApp } from './app.js';
 import { loadDotEnv, loadEnv } from './config/env.js';
 import { openDatabase } from './db/connection.js';
 import { runMigrations } from './db/migrate.js';
-import { createSqlitePlayerStore } from './modules/player/sqlite-store.js';
+import { createSqliteGameStore } from './modules/store/sqlite.js';
 
 loadDotEnv();
 const env = loadEnv();
 
 const database = openDatabase(env.DB_PATH);
 runMigrations(database.db);
-const store = createSqlitePlayerStore(database.db);
+const store = createSqliteGameStore(database.db);
 
 const app = await buildApp({ store });
 await app.listen({ host: env.HOST, port: env.PORT });

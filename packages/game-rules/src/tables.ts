@@ -52,3 +52,10 @@ export const APPEARANCE_SCORE_BY_EPITHET: Record<string, number> = {
   epithet_newcomer: 50,
 };
 export const DEFAULT_APPEARANCE_SCORE = 50;
+
+/** 放置修炼：按固定时间片结算（1 片 = 1 分钟）；凡阶 12 进度/小时，约 8 小时圆满 */
+export const IDLE_CULTIVATION = {
+  tickMs: 60_000,
+  progressPerTick: 0.2,
+  neiliPerTick: 0.5,
+} as const;

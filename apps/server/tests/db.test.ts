@@ -134,3 +134,50 @@ describe('带数据升级（已有存档）', () => {
     }
   });
 });
+
+describe('背包与修炼任务约束', () => {
+  const withPlayer = () => {
+    const d = fresh();
+    insertPlayer(d);
+    return d;
+  };
+  const addItem = (d: ReturnType<typeof fresh>, qty: number, item = 'pill_breakthrough_fan') =>
+    d.sqlite.prepare('insert into inventory (player_id, item_id, quantity) values (?, ?, ?)').run('p1', item, qty);
+  const addJob = (d: ReturnType<typeof fresh>, id: string, status: string, started = 100, settled = 100) =>
+    d.sqlite
+      .prepare('insert into cultivation_jobs (id, player_id, method_id, status, started_at, last_settled_at) values (?,?,?,?,?,?)')
+      .run(id, 'p1', 'basic_breathing', status, started, settled);
+
+  it('库存：数量范围、主键唯一、外键', () => {
+    const d = withPlayer();
+    expect(() => addItem(d, 1)).not.toThrow();
+    expect(() => addItem(d, 1)).toThrow(/UNIQUE|PRIMARY/);
+    expect(() => addItem(d, -1, 'x')).toThrow(/CHECK/);
+    expect(() => addItem(d, 10_000, 'y')).toThrow(/CHECK/);
+    expect(() => d.sqlite.prepare("insert into inventory values ('ghost','x',1,0)").run()).toThrow(/FOREIGN KEY/);
+  });
+
+  it('修炼任务：状态枚举、时间顺序', () => {
+    const d = withPlayer();
+    expect(() => addJob(d, 'j0', 'paused')).toThrow(/CHECK/);
+    expect(() => addJob(d, 'j1', 'running', 200, 100)).toThrow(/CHECK/);
+    expect(() => addJob(d, 'j2', 'running', 100, 100)).not.toThrow();
+  });
+
+  it('同一玩家只能有一个进行中的修炼，已停止的可以有多个', () => {
+    const d = withPlayer();
+    addJob(d, 'a', 'running');
+    expect(() => addJob(d, 'b', 'running')).toThrow(/UNIQUE/);
+    expect(() => addJob(d, 'c', 'stopped')).not.toThrow();
+    expect(() => addJob(d, 'd', 'stopped')).not.toThrow();
+  });
+
+  it('删除玩家时级联删除库存与任务', () => {
+    const d = withPlayer();
+    addItem(d, 1);
+    addJob(d, 'a', 'running');
+    d.sqlite.prepare("delete from players where id='p1'").run();
+    expect((d.sqlite.prepare('select count(*) c from inventory').get() as { c: number }).c).toBe(0);
+    expect((d.sqlite.prepare('select count(*) c from cultivation_jobs').get() as { c: number }).c).toBe(0);
+  });
+});

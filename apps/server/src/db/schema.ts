@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, foreignKey, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { check, foreignKey, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 const nowMs = sql`(unixepoch('subsec') * 1000)`;
 /** 与 @jhz/contracts 的 REALMS 保持一致（测试校验）；drizzle-kit 无法加载 TS 源码包，故此处内联 */
@@ -53,5 +53,43 @@ export const playerStates = sqliteTable(
     check('player_states_currency_nonneg', sql`${t.yuanbao} >= 0 and ${t.silver} >= 0 and ${t.copper} >= 0`),
     check('player_states_version_nonneg', sql`${t.version} >= 0`),
     check('player_states_cooldown_nonneg', sql`${t.breakthroughAvailableAt} is null or ${t.breakthroughAvailableAt} >= 0`),
+  ],
+);
+
+/** 背包：玩家持有的物品数量（物品定义在规则表中） */
+export const inventory = sqliteTable(
+  'inventory',
+  {
+    playerId: text('player_id').notNull(),
+    itemId: text('item_id').notNull(),
+    quantity: integer('quantity').notNull(),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    primaryKey({ columns: [t.playerId, t.itemId] }),
+    foreignKey({ columns: [t.playerId], foreignColumns: [players.id] }).onDelete('cascade'),
+    check('inventory_quantity_range', sql`${t.quantity} >= 0 and ${t.quantity} <= 9999`),
+  ],
+);
+
+/** 放置修炼任务；同一玩家同一时间最多一个 running（唯一部分索引保证） */
+export const cultivationJobs = sqliteTable(
+  'cultivation_jobs',
+  {
+    id: text('id').primaryKey(),
+    playerId: text('player_id').notNull(),
+    methodId: text('method_id').notNull(),
+    status: text('status').notNull(),
+    startedAt: integer('started_at').notNull(),
+    lastSettledAt: integer('last_settled_at').notNull(),
+    createdAt: integer('created_at').notNull().default(nowMs),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    foreignKey({ columns: [t.playerId], foreignColumns: [players.id] }).onDelete('cascade'),
+    check('cultivation_jobs_status_valid', sql`${t.status} in ('running', 'stopped')`),
+    check('cultivation_jobs_time_order', sql`${t.startedAt} >= 0 and ${t.lastSettledAt} >= ${t.startedAt}`),
+    uniqueIndex('cultivation_jobs_one_running').on(t.playerId).where(sql`${t.status} = 'running'`),
+    index('cultivation_jobs_player_idx').on(t.playerId),
   ],
 );
