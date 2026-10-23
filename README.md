@@ -1,9 +1,18 @@
 # 江湖志
 
-单机、自用的 AI 驱动文字放置武侠网页游戏。文档见 [`docs/`](docs/)（单机调整见 [`docs/adjustments.md`](docs/adjustments.md)）。
+AI 驱动的文字放置武侠网页游戏。**完全单机、自用**：存档在本机，服务只监听 `127.0.0.1`，无账号、无公开部署计划。
 
-## 环境
-Node.js ≥ 20。
+> 核心原则：规则确定性、剧情生成性、世界持续性、行动开放性、状态可追溯性。
+> 程序（数据库）是唯一权威；AI 只负责理解意图与叙事，不直接改写游戏状态；挂机结算不调用 AI。
+
+## 玩法循环
+修炼 / 日常行动 → 遇到人物、任务、事件 → 选择固定选项或自由输入 → AI 转为结构化行动、服务端校验并结算 → 提交状态后 AI 生成叙事 → 记录历史、更新 NPC 记忆并存档。
+
+## 技术栈
+React + Vite · Fastify + TypeScript · SQLite + Drizzle（T-005 起）· Zod · Vitest · 可替换的 AI 适配层（S3 起）
+
+## 环境要求
+Node.js ≥ 20
 
 ## 快速开始
 ```bash
@@ -12,15 +21,48 @@ cp .env.example .env     # 可选，默认值即可运行
 npm run dev              # 开发：服务 127.0.0.1:3000，前端 127.0.0.1:5173
 npm start                # 构建前端并由本机服务托管：http://127.0.0.1:3000
 ```
+真实密钥（AI API Key）只放 `.env`，已被 `.gitignore` 忽略，不会进入前端或仓库。
 
 ## 常用命令
 | 命令 | 作用 |
 |---|---|
-| `npm run typecheck` | 全工作区类型检查 |
-| `npm test` | 运行 Vitest |
+| `npm run dev` | 同时启动后端与前端开发服务 |
+| `npm start` | 构建并以生产方式本机运行 |
 | `npm run build` | 构建前端 |
+| `npm run typecheck` | 全工作区 TypeScript 类型检查 |
+| `npm test` | 运行 Vitest |
 
-## 结构
-`apps/web` 前端 · `apps/server` 本地后端 · `packages/contracts` 共享 Zod 契约 · `packages/game-rules` 纯规则 · `db/` 迁移与种子。
+## 目录结构
+```
+apps/web              前端（React + Vite）
+apps/server           本地后端（Fastify，模块化单体）
+packages/contracts    共享 DTO 与 Zod schema
+packages/game-rules   纯规则函数（无 IO，可固定种子复现）
+db/                   迁移与种子
+docs/                 项目文档与任务记录
+```
 
-真实密钥只放 `.env`（已被 `.gitignore` 忽略）。
+## 文档
+| 文档 | 说明 |
+|---|---|
+| [项目书](docs/project-charter.md) | 目标、范围、玩法循环、阶段规划 |
+| [技术说明书](docs/technical-spec.md) | 架构、数据模型、行动协议、API |
+| [开发任务书](docs/task-plan.md) | S1–S6 共 28 项任务与验收条件 |
+| [审计检查清单](docs/audit-checklist.md) | 质量门槛与发布判定 |
+| [单机调整说明](docs/adjustments.md) | 相对 V1.0 文档的单机自用调整（**优先于原文**） |
+| [任务记录](docs/task-records/) | 每项任务的实现、验证命令与证据 |
+
+## 开发进度
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| S1 原型 | T-001 工程骨架 ✅（待验收）· T-002 ~ T-006 | 进行中 |
+| S2 规则与时间 | 规则引擎、离线收益、幂等 | 未开始 |
+| S3 AI 行动 | 结构化解析、判定、叙事分离 | 未开始 |
+| S4 NPC 记忆 | 关系、记忆、任务状态机 | 未开始 |
+| S5 动态江湖 | 地点、势力、世界事件 | 未开始 |
+| S6 发布审计 | 安全、备份恢复、回归 | 未开始 |
+
+## 开发约定
+- 每次只做一个可验证的垂直切片，附验证命令与证据。
+- 数据库结构变更须有迁移文件；核心规则变更须同步测试、技术说明书和审计项。
+- 未经评审不引入新框架或大范围重构；P0/P1 未清零不得验收。
