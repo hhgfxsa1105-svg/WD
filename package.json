@@ -20,9 +20,11 @@
     "db:generate": "npm run db:generate -w @jhz/server",
     "db:migrate": "npm run db:migrate -w @jhz/server",
     "db:export": "npm run db:export -w @jhz/server --",
-    "db:import": "npm run db:import -w @jhz/server --"
+    "db:import": "npm run db:import -w @jhz/server --",
+    "test:e2e": "npm run build && playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^22.10.0",
     "concurrently": "^9.1.0",
     "drizzle-orm": "^0.45.4",
