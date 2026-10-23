@@ -43,5 +43,6 @@ npm run db:migrate                    # 迁移到最新版本（启动时也会�
 npm run typecheck
 npm test                              # 单元与集成测试
 npm run test:e2e                      # 浏览器端到端 38 条（需先 npx playwright install chromium）
+npm run bench                         # 性能基线（见 docs/perf-baseline.md）
 ```
 `test:e2e` 使用临时存档与随机端口，不影响你的真实存档。若本机已有 Chromium，可设置 `PW_CHROMIUM_PATH` 指向它。

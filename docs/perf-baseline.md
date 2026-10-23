@@ -12,9 +12,8 @@
 | 并发 | 单进程串行处理（SQLite 同步事务）；50 个并发提交应在 1 s 内完成 |
 
 ## 实测基线（以下由 `npm run bench` 生成）
-### 测量日期 2026-10-23
 
-环境：Node v22.22.0，Intel(R) Xeon(R) Processor @ 2.10GHz × 4，linux；文件数据库（WAL）；行动 1000 次。
+测量日期 2026-10-23。环境：Node v22.22.0，Intel(R) Xeon(R) Processor @ 2.10GHz × 4，linux；文件数据库（WAL）；行动 1000 次。
 
 ## 规则函数（纯计算，无 IO）
 | 函数 | 单次耗时（µs） | 每秒次数 |

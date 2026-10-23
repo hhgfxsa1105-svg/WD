@@ -36,6 +36,7 @@ npm start                # 构建前端并由本机服务托管：http://127.0.0
 | `npm run db:generate` | 修改 `schema.ts` 后生成新的迁移文件到 `db/migrations` |
 | `npm run typecheck` | 全工作区 TypeScript 类型检查 |
 | `npm test` | 运行 Vitest（单元与集成） |
+| `npm run bench` | 性能基线（规则吞吐、接口延迟、存档增长、启动耗时），见 [性能基线](docs/perf-baseline.md) |
 | `npm run test:e2e` | 浏览器端到端 38 条（需 `npx playwright install chromium`，或设置 `PW_CHROMIUM_PATH`） |
 
 ## 目录结构
@@ -59,6 +60,7 @@ docs/                 项目文档与任务记录
 | [单机调整说明](docs/adjustments.md) | 相对 V1.0 文档的单机自用调整（**优先于原文**） |
 | [任务记录](docs/task-records/) | 每项任务的实现、验证命令与证据 |
 | [接口一览](docs/api.md) | 所有接口、错误与幂等约定 |
+| [性能基线](docs/perf-baseline.md) | 性能目标与实测数据（G-05） |
 | [核心规则](docs/rules.md) | 修炼、货币、突破、魅力的公式与数据表 |
 | [原型演示](docs/demo.md) | 从零安装到走完原型循环的步骤 |
 | [已知问题](docs/known-issues.md) | 当前限制与处理阶段 |
@@ -69,7 +71,7 @@ docs/                 项目文档与任务记录
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | S1 原型 | T-001 ~ T-005 ✅ · T-006 原型验收与说明 ✅（S1 待验收签核，见 [S1 审计报告](docs/audit/S1-report.md)） | 待验收 |
-| S2 规则与时间 | T-007 核心规则纯函数 ✅（待验收，见 [规则说明](docs/rules.md)）· T-008 修炼任务与结算 ✅ · T-009 世界时钟与离线收益 ✅ · T-010 行动幂等与审计事件 ✅（待验收）· T-011 | 进行中 |
+| S2 规则与时间 | T-007 ~ T-011 ✅（S2 待验收签核，见 [S2 审计报告](docs/audit/S2-report.md)、[核心规则](docs/rules.md)） | 待验收 |
 | S3 AI 行动 | 结构化解析、判定、叙事分离 | 未开始 |
 | S4 NPC 记忆 | 关系、记忆、任务状态机 | 未开始 |
 | S5 动态江湖 | 地点、势力、世界事件 | 未开始 |
