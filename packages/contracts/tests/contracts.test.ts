@@ -166,3 +166,44 @@ describe('LogRecordSchema / AuditEventSchema', () => {
     expect(AuditEventSchema.safeParse({ ...ev, seq: 0 }).success).toBe(false);
   });
 });
+
+import { AI_ACTION_TYPES, AiActionPlanSchema } from '../src/index.js';
+
+describe('AiActionPlanSchema（AI 行动方案，不可信输入）', () => {
+  const plan = {
+    intent: '休息一下',
+    action_type: 'rest',
+    target: null,
+    steps: [],
+    risk_tags: [],
+    narrative_context: '',
+    needs_clarification: false,
+    clarification: null,
+  };
+  it('接受合法方案', () => {
+    expect(AiActionPlanSchema.safeParse(plan).success).toBe(true);
+    expect(AiActionPlanSchema.safeParse({ ...plan, action_type: 'breakthrough', target: { type: 'item', id: 'pill_breakthrough_fan' } }).success).toBe(true);
+  });
+  it('动作类型枚举覆盖设计内的全部类型', () => {
+    expect([...AI_ACTION_TYPES]).toEqual(['cultivate', 'rest', 'breakthrough', 'start_idle', 'stop_idle', 'check_status', 'talk', 'other']);
+  });
+  it.each([
+    ['缺 action_type', { action_type: undefined }],
+    ['未知动作类型', { action_type: 'teleport' }],
+    ['未知字段', { silver: 999999 }],
+    ['携带数值字段（伤害）', { damage: 9999 }],
+    ['携带前置条件声明', { requirements: ['target_known'] }],
+    ['意图为空', { intent: '' }],
+    ['意图超长', { intent: 'x'.repeat(81) }],
+    ['目标 ID 含大写', { target: { type: 'item', id: 'Pill' } }],
+    ['目标 ID 含注入式内容', { target: { type: 'item', id: "x'; drop table players;--" } }],
+    ['目标类型未知', { target: { type: 'planet', id: 'earth' } }],
+    ['目标含多余字段', { target: { type: 'item', id: 'pill_breakthrough_fan', qty: 99 } }],
+    ['步骤超过 3 个', { steps: Array.from({ length: 4 }, () => ({ type: 'travel', target_id: null })) }],
+    ['未知风险标签', { risk_tags: ['death'] }],
+    ['需要澄清却没有问题', { needs_clarification: true, clarification: null }],
+    ['缺 needs_clarification', { needs_clarification: undefined }],
+  ])('拒绝：%s', (_n, patch) => {
+    expect(AiActionPlanSchema.safeParse({ ...plan, ...patch }).success).toBe(false);
+  });
+});

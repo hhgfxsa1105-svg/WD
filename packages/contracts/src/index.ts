@@ -4,6 +4,7 @@ export * from './enums.js';
 export * from './limits.js';
 export * from './player.js';
 export * from './action.js';
+export * from './ai-plan.js';
 export * from './inventory.js';
 export * from './cultivation.js';
 export * from './log.js';

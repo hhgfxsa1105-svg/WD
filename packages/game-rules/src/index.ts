@@ -1,4 +1,5 @@
 export * from './actions.js';
+export * from './ai-plan.js';
 export * from './breakthrough.js';
 export * from './charm.js';
 export * from './cultivation.js';
