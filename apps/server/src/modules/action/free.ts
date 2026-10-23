@@ -12,6 +12,7 @@ import { AppError } from '../../shared/errors.js';
 import { AiError, type AiGateway } from '../ai/index.js';
 import { buildParseMessages, sanitizePlayerInput } from '../ai/prompt.js';
 import type { CultivationService } from '../cultivation/service.js';
+import type { Narrator } from '../narrative/service.js';
 import type { GameStore, GameTx } from '../store/types.js';
 import type { ActionService } from './service.js';
 
@@ -49,6 +50,8 @@ export interface FreeDeps {
   actions: ActionService;
   cultivation: CultivationService;
   ai: AiGateway;
+  /** 叙事与结算分离：结算提交后才尝试 AI 叙事；未提供则不叙事 */
+  narrator?: Narrator;
 }
 
 /**
@@ -56,12 +59,16 @@ export interface FreeDeps {
  * 由服务端按**当前状态**重新判定（体力、进度、冷却、库存……），AI 无法绕过任何规则。
  * 复用固定行动的事务、幂等、审计与日志；幂等重放不会再次调用 AI。
  */
-export function createFreeActionService({ store, actions, cultivation, ai }: FreeDeps) {
+export function createFreeActionService({ store, actions, cultivation, ai, narrator }: FreeDeps) {
   /** 同一幂等键的并发请求合并为一次 AI 调用 */
   const inflight = new Map<string, Promise<ActionResponse>>();
 
   const respond = (player: PlayerState, narrative: string, info: AiInfo, changes: ActionResponse['changes'] = [], log: ActionResponse['log'] = null): ActionResponse =>
     ActionResponseSchema.parse({ actionId: randomUUID(), status: 'COMPLETED', narrative, changes, breakthrough: null, log, ai: info, player });
+
+  /** 新结算的行动提交后尝试 AI 叙事；重放不叙事 */
+  const settle = async ({ response, fresh }: { response: ActionResponse; fresh: boolean }): Promise<ActionResponse> =>
+    fresh && narrator ? narrator.complete(response) : response;
 
   /** 向模型要方案；格式不合格时最多重试 1 次。返回 null 表示模型两次都没给出可用方案 */
   async function askModel(input: string): Promise<AiActionPlan | null> {
@@ -115,7 +122,7 @@ export function createFreeActionService({ store, actions, cultivation, ai }: Fre
       case 'cultivate':
       case 'rest': {
         const base = { kind: 'fixed' as const, idempotencyKey: req.idempotencyKey, actionId: plan.action_type };
-        return actions.execute(base, { fingerprint, ai: info(true), eventType: `action.free.${plan.action_type}` });
+        return settle(actions.executeFresh(base, { fingerprint, ai: info(true), eventType: `action.free.${plan.action_type}` }));
       }
       case 'breakthrough': {
         const pill = plan.target?.id ?? null;
@@ -126,7 +133,7 @@ export function createFreeActionService({ store, actions, cultivation, ai }: Fre
           }
           if (pill && !pillGradeOf(pill)) throw new AppError('PRECONDITION_FAILED', '这个东西不能用来突破');
         };
-        return actions.execute(base, { fingerprint, ai: info(true), eventType: 'action.free.breakthrough', preCheck });
+        return settle(actions.executeFresh(base, { fingerprint, ai: info(true), eventType: 'action.free.breakthrough', preCheck }));
       }
       default:
         // talk / other：目前没有可交谈的对象或无法归类

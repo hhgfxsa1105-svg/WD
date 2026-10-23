@@ -6,6 +6,8 @@ import type { HealthResponse } from '@jhz/contracts';
 import { createFreeActionService } from './modules/action/free.js';
 import { createActionService } from './modules/action/service.js';
 import { createGatewayFromConfig, loadAiConfig, type AiGateway } from './modules/ai/index.js';
+import { createNarrator } from './modules/narrative/service.js';
+import { OFF_NARRATE, type NarrateConfig } from './modules/narrative/config.js';
 import { createCultivationService, type OfflinePolicy } from './modules/cultivation/service.js';
 import { createMemoryGameStore } from './modules/store/memory.js';
 import type { GameStore } from './modules/store/types.js';
@@ -22,6 +24,8 @@ export interface AppDeps {
   rng?: Rng;
   /** AI 网关；默认未启用 */
   ai?: AiGateway;
+  /** AI 叙事配置；默认关闭（index.ts 从环境变量读取） */
+  narrate?: Partial<NarrateConfig>;
   /** 覆盖默认离线策略（测试用） */
   offline?: Partial<OfflinePolicy>;
   /** 系统时间落后于世界时间的时长；仅 WorldClock 提供 */
@@ -33,6 +37,7 @@ export async function buildApp({
   clock = systemClock,
   rng = secureRng,
   offline,
+  narrate,
   ai = createGatewayFromConfig(loadAiConfig({}), store.aiLog, clock),
   clockBehindMs = () => 0,
 }: AppDeps = {}) {
@@ -46,7 +51,8 @@ export async function buildApp({
     version: '0.1.0',
   }));
 
-  const actions = createActionService({ store, clock, rng });
+  const narrator = createNarrator({ store, ai, clock, config: { ...OFF_NARRATE, ...narrate } });
+  const actions = createActionService({ store, clock, rng, narratable: narrator.wants });
   const cultivation = createCultivationService({ store, clock, offline });
   registerGameRoutes(app, {
     store,
@@ -55,7 +61,8 @@ export async function buildApp({
     clock,
     clockBehindMs,
     ai,
-    free: createFreeActionService({ store, actions, cultivation, ai }),
+    narrator,
+    free: createFreeActionService({ store, actions, cultivation, ai, narrator }),
   });
 
 

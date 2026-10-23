@@ -10,6 +10,7 @@
 | `GET /player/state` | 当前角色 |
 | `GET /player/inventory` | 背包（名称、评级、数量；数量为 0 的不返回） |
 | `POST /actions` | 提交行动，必带 `idempotencyKey`。`kind`：`fixed`（`actionId`: `cultivate`/`rest`）、`breakthrough`（`pillItemId`: 突破丹药物品 ID 或 `null`）、`free`（`input`: 玩家原话，由 AI 解析，见 `docs/ai-contract.md`） |
+| `POST /actions/:id/narrate` | 重新生成叙事（仅对叙事待补的行动调用 AI；只改文字，不改任何状态）。失败 503 `AI_UNAVAILABLE`；已完成的行动直接返回 |
 | `GET /actions/:id` | 查询已完成行动的结果 |
 | `GET /log?limit=` | 玩家可见日志（结构化记录，按时间正序；`limit` 1–200，默认 100）。刷新、重启后据此还原 |
 | `GET /audit/actions/:id` | 内部审计：行动及其审计事件（前后状态差异）。**仅本机访问**，其他来源 403 |
@@ -23,6 +24,11 @@
 
 ## 行动结果
 `ActionResponse`：`actionId`、`status`、`narrative`、`changes`（数值变化）、`breakthrough`（仅突破：`outcome`、`chancePercent`、`roll`）、`log`（本次写入的日志记录，重试回放时与首次相同）、`ai`（仅自由行动：`intent`、`actionType`、`executed`、`clarification`）、`player`（最新角色）。澄清与查看状态不产生行动记录，`GET /actions/:id` 查不到它们。
+
+## 叙事状态（`status`）
+- `COMPLETED`：结算与叙事都已完成（含不需要 AI 叙事的行动，直接用模板）。
+- `COMMITTED`：**结算已提交**，叙事待补（`narrative` 暂为模板文字）。刷新、重启后依然如此；`POST /actions/:id/narrate` 可补写。
+- 同一幂等键重试：返回首次结果，不会再次结算，也不会再次调用 AI。
 
 ## 自由行动的错误
 - `503 AI_UNAVAILABLE`：AI 未开启、额度用完、超时、限流、鉴权问题等；提示语不含内部细节。

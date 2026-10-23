@@ -40,6 +40,8 @@ export interface ActionDeps {
   store: GameStore;
   clock: Clock;
   rng: Rng;
+  /** 该类事件是否交给 AI 叙事：是则结算后状态停在 COMMITTED（模板叙事），等待叙事完成 */
+  narratable?: (type: LogPayload['type']) => boolean;
 }
 
 type Req = Exclude<SubmitActionRequest, { kind: 'free' }>;
@@ -55,7 +57,7 @@ export interface ExecuteExtra {
   preCheck?: (tx: GameTx) => void;
 }
 
-export function createActionService({ store, clock, rng }: ActionDeps) {
+export function createActionService({ store, clock, rng, narratable }: ActionDeps) {
   /** 事务内结算：任何失败都会抛出，使丹药扣除、状态变更、行动与审计记录一并回滚 */
   function resolveInTx(tx: GameTx, req: Req, now: number): Resolved {
     const player = tx.player();
@@ -112,7 +114,8 @@ export function createActionService({ store, clock, rng }: ActionDeps) {
     });
   }
 
-  function execute(req: Req, extra: ExecuteExtra = {}): ActionResponse {
+  /** 同 execute，并告知本次是否为新结算（false 表示幂等重放，调用方不应再触发叙事） */
+  function executeFresh(req: Req, extra: ExecuteExtra = {}): { response: ActionResponse; fresh: boolean } {
     const fingerprint = extra.fingerprint ?? fingerprintOf(req);
     const now = clock.now();
 
@@ -121,7 +124,7 @@ export function createActionService({ store, clock, rng }: ActionDeps) {
       const seen = tx.findActionByKey(req.idempotencyKey);
       if (seen) {
         if (seen.fingerprint !== fingerprint) throw new AppError('CONFLICT', '该幂等键已用于另一个行动');
-        return seen.response; // 重试：回放首次结果，不重复结算、不重复扣丹药
+        return { response: seen.response, fresh: false }; // 重试：回放首次结果，不重复结算、不重复扣丹药
       }
 
       let status: ActionStatus = 'RECEIVED';
@@ -131,7 +134,8 @@ export function createActionService({ store, clock, rng }: ActionDeps) {
       extra.preCheck?.(tx);
       const resolved = resolveInTx(tx, req, now);
       status = advance(status, 'COMMITTED');
-      status = advance(status, 'COMPLETED'); // 固定行动与突破的叙事为模板，随结算一并完成
+      // 不交给 AI 叙事的事件，模板叙事随结算一并完成；交给 AI 的停在 COMMITTED，叙事成功后才 COMPLETED
+      if (!narratable?.(resolved.log.type)) status = advance(status, 'COMPLETED');
 
       const actionId = randomUUID();
       const player = tx.player();
@@ -158,14 +162,18 @@ export function createActionService({ store, clock, rng }: ActionDeps) {
       });
       const response = ActionResponseSchema.parse({ ...draft, log });
       tx.saveAction({ ...base, response });
-      return response;
+      return { response, fresh: true };
     });
   }
 
-  function submit(req: SubmitActionRequest): ActionResponse {
+  const execute = (req: Req, extra: ExecuteExtra = {}): ActionResponse => executeFresh(req, extra).response;
+
+  function submitFresh(req: SubmitActionRequest): { response: ActionResponse; fresh: boolean } {
     if (req.kind === 'free') throw new AppError('PRECONDITION_FAILED', '自由行动请通过自由行动入口提交');
-    return execute(req);
+    return executeFresh(req);
   }
+
+  const submit = (req: SubmitActionRequest): ActionResponse => submitFresh(req).response;
 
   function get(actionId: string): ActionResponse {
     const found = store.read((tx) => tx.getAction(actionId));
@@ -173,7 +181,7 @@ export function createActionService({ store, clock, rng }: ActionDeps) {
     return found.response;
   }
 
-  return { submit, execute, findReplay, get };
+  return { submit, submitFresh, execute, executeFresh, findReplay, get };
 }
 
 export type ActionService = ReturnType<typeof createActionService>;

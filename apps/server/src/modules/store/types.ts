@@ -56,6 +56,8 @@ export interface GameTx {
   saveAction(action: StoredAction): void;
   /** 追加审计事件；带日志内容时同时产生一条玩家可见日志并返回 */
   appendEvent(input: AuditEventInput): LogRecord | null;
+  /** 只替换某个行动对应日志记录里的叙事文字（其余字段、序号、时间不变）；该行动没有日志时返回 null */
+  replaceLogNarrative(actionId: string, narrative: string): LogRecord | null;
   /** 最近的玩家可见日志，按时间正序，最多 limit 条 */
   recentLog(limit: number): LogRecord[];
   eventsForAction(actionId: string): AuditEvent[];
@@ -95,8 +97,8 @@ export interface AiCallLogStore {
   /** 预占一次额度并返回记录 ID；与「检查是否超限」在同一个同步步骤内完成，因此并发调用不会超出上限 */
   reserve(e: { actionId: string | null; purpose: 'parse' | 'narrate'; provider: string; model: string; day: string; requestChars: number; at: number }): string;
   finish(id: string, r: { status: 'ok' | 'error'; errorKind: string | null; attempts: number; latencyMs: number; promptTokens: number | null; completionTokens: number | null; totalTokens: number | null; responseChars: number | null }): void;
-  /** 当日已使用（含 pending 与失败）的调用次数 */
-  usedOn(day: string): number;
+  /** 当日已使用（含 pending 与失败）的调用次数；可按用途统计 */
+  usedOn(day: string, purpose?: 'parse' | 'narrate'): number;
   recent(limit: number): AiCallRecord[];
 }
 

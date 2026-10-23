@@ -1,4 +1,5 @@
 import { buildApp } from './app.js';
+import { loadNarrateConfig } from './modules/narrative/config.js';
 import { loadDotEnv, loadEnv } from './config/env.js';
 import { openDatabase } from './db/connection.js';
 import { createGatewayFromConfig, describeAiConfig, loadAiConfig } from './modules/ai/index.js';
@@ -19,7 +20,7 @@ const clock = new WorldClock(store.worldClock, {
 const aiConfig = loadAiConfig();
 console.log(describeAiConfig(aiConfig)); // 摘要不含密钥与地址
 const ai = createGatewayFromConfig(aiConfig, store.aiLog, clock);
-const app = await buildApp({ store, clock, ai, clockBehindMs: () => clock.behindMs() });
+const app = await buildApp({ store, clock, ai, narrate: loadNarrateConfig(), clockBehindMs: () => clock.behindMs() });
 await app.listen({ host: env.HOST, port: env.PORT });
 console.log(`江湖志已启动：http://${env.HOST}:${env.PORT}（存档：${env.DB_PATH}）`);
 

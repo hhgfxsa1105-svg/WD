@@ -195,6 +195,18 @@ function makeTx(db: Executor): GameTx {
       db.update(auditEvents).set({ logJson: JSON.stringify(log) }).where(eq(auditEvents.seq, row.seq)).run();
       return log;
     },
+    replaceLogNarrative(actionId, narrative) {
+      const row = db
+        .select({ seq: auditEvents.seq, logJson: auditEvents.logJson })
+        .from(auditEvents)
+        .where(and(eq(auditEvents.actionId, actionId), isNotNull(auditEvents.logJson)))
+        .orderBy(asc(auditEvents.seq))
+        .get();
+      if (!row) return null;
+      const log = LogRecordSchema.parse({ ...JSON.parse(row.logJson!), narrative });
+      db.update(auditEvents).set({ logJson: JSON.stringify(log) }).where(eq(auditEvents.seq, row.seq)).run();
+      return log;
+    },
     recentLog(limit) {
       const rows = db
         .select({ logJson: auditEvents.logJson })
@@ -293,7 +305,12 @@ export function createSqliteGameStore(db: Db, initial?: PlayerState): GameStore 
           .where(eq(aiCallLogs.id, id))
           .run();
       },
-      usedOn: (day) => db.select({ n: count() }).from(aiCallLogs).where(eq(aiCallLogs.day, day)).get()?.n ?? 0,
+      usedOn: (day, purpose) =>
+        db
+          .select({ n: count() })
+          .from(aiCallLogs)
+          .where(purpose ? and(eq(aiCallLogs.day, day), eq(aiCallLogs.purpose, purpose)) : eq(aiCallLogs.day, day))
+          .get()?.n ?? 0,
       recent: (limit) =>
         db
           .select()

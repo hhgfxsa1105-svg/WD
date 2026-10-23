@@ -84,6 +84,12 @@ function makeTx(s: State): GameTx {
       });
       return log ? structuredClone(log) : null;
     },
+    replaceLogNarrative(actionId, narrative) {
+      const ev = s.events.find((e) => e.actionId === actionId && e.log);
+      if (!ev?.log) return null;
+      ev.log = LogRecordSchema.parse({ ...ev.log, narrative });
+      return structuredClone(ev.log);
+    },
     recentLog: (limit) =>
       structuredClone(s.events.flatMap((e) => (e.log ? [e.log] : [])).slice(-limit)),
     eventsForAction: (actionId) =>
@@ -115,7 +121,7 @@ export function createMemoryGameStore(initial: PlayerState = createInitialPlayer
         const rec = aiCalls.find((x) => x.id === id);
         if (rec) Object.assign(rec, r);
       },
-      usedOn: (day) => aiCalls.filter((x) => x.day === day).length,
+      usedOn: (day, purpose) => aiCalls.filter((x) => x.day === day && (!purpose || x.purpose === purpose)).length,
       recent: (limit) => structuredClone(aiCalls.slice(-limit).reverse()),
     },
     worldClock: {
