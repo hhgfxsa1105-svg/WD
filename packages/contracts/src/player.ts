@@ -64,6 +64,8 @@ export const PlayerStateSchema = z
     epithet: HonorificSchema.nullable(),
     fate: HonorificSchema.nullable(),
     location: LocationRefSchema,
+    /** 突破冷却截止时间（服务端时间，毫秒时间戳）；null 表示可以突破 */
+    breakthroughAvailableAt: z.number().int().min(0).nullable(),
     version: z.number().int().min(0),
   })
   .strict()

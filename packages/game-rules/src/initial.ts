@@ -35,6 +35,7 @@ export function createInitialPlayer(): PlayerState {
       ],
     },
     location: { id: 'loc_qingyun_gate', name: '青云山 · 山门' },
+    breakthroughAvailableAt: null,
     version: 0,
   });
 }

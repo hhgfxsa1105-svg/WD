@@ -29,7 +29,7 @@ export const EffectKindSchema = z.enum(EFFECT_KINDS);
 export type EffectKind = z.infer<typeof EffectKindSchema>;
 
 /** 行动可改变的数值（用于结果摘要） */
-export const CHANGE_STATS = ['stamina', 'hp', 'neili', 'realmProgress'] as const;
+export const CHANGE_STATS = ['stamina', 'hp', 'neili', 'realmProgress', 'maxHp', 'maxStamina'] as const;
 export const ChangeStatSchema = z.enum(CHANGE_STATS);
 export type ChangeStat = z.infer<typeof ChangeStatSchema>;
 

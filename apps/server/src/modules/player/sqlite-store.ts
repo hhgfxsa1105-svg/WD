@@ -31,6 +31,7 @@ function toRow(s: PlayerState, version: number) {
     fateJson: toJson(s.fate),
     locationId: s.location.id,
     locationName: s.location.name,
+    breakthroughAvailableAt: s.breakthroughAvailableAt,
     version,
   };
 }
@@ -60,6 +61,7 @@ function read(db: Db): PlayerState {
     epithet: fromJson(s.epithetJson),
     fate: fromJson(s.fateJson),
     location: { id: s.locationId, name: s.locationName },
+    breakthroughAvailableAt: s.breakthroughAvailableAt,
     version: s.version,
   });
 }

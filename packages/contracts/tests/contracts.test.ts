@@ -30,6 +30,7 @@ const validPlayer = {
   epithet: honor(),
   fate: honor('xuan'),
   location: { id: 'loc_qingyun_gate', name: '青云山 · 山门' },
+  breakthroughAvailableAt: null,
   version: 0,
 };
 
@@ -75,6 +76,9 @@ describe('PlayerStateSchema', () => {
     ['名号效果缺数值', { title: { ...honor(), effects: [{ kind: 'exp_multiplier', text: 'x' }] } }],
     ['名号效果数值越界', { title: { ...honor(), effects: [{ kind: 'exp_multiplier', value: 5000, text: 'x' }] } }],
     ['名号含未知字段', { title: { ...honor(), power: 9999 } }],
+    ['冷却时间为负', { breakthroughAvailableAt: -1 }],
+    ['冷却时间非整数', { breakthroughAvailableAt: 1.5 }],
+    ['缺冷却字段不可省略', { breakthroughAvailableAt: undefined }],
     ['位置缺 id', { location: { name: '山门' } }],
     ['昵称为空白', { displayName: '   ' }],
     ['数值给字符串', { hp: '10' }],

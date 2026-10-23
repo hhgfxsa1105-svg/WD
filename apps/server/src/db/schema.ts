@@ -35,6 +35,7 @@ export const playerStates = sqliteTable(
     fateJson: text('fate_json'),
     locationId: text('location_id').notNull(),
     locationName: text('location_name').notNull(),
+    breakthroughAvailableAt: integer('breakthrough_available_at'),
     version: integer('version').notNull().default(0),
     createdAt: integer('created_at').notNull().default(nowMs),
     updatedAt: integer('updated_at').notNull().default(nowMs),
@@ -51,5 +52,6 @@ export const playerStates = sqliteTable(
     ),
     check('player_states_currency_nonneg', sql`${t.yuanbao} >= 0 and ${t.silver} >= 0 and ${t.copper} >= 0`),
     check('player_states_version_nonneg', sql`${t.version} >= 0`),
+    check('player_states_cooldown_nonneg', sql`${t.breakthroughAvailableAt} is null or ${t.breakthroughAvailableAt} >= 0`),
   ],
 );

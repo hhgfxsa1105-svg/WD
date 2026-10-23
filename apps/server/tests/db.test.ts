@@ -1,6 +1,10 @@
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { describe, expect, it } from 'vitest';
 import { REALMS } from '@jhz/contracts';
-import { openDatabase } from '../src/db/connection.js';
+import { MIGRATIONS_DIR, openDatabase } from '../src/db/connection.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { DB_REALMS } from '../src/db/schema.js';
 
@@ -15,7 +19,7 @@ const insertPlayer = (d: ReturnType<typeof fresh>) =>
 
 const baseState = {
   player_id: 'p1', realm: 'body_tempering', realm_progress: 0, hp: 10, max_hp: 10, stamina: 5, max_stamina: 5,
-  neili_current: null as number | null, neili_max: null as number | null, yuanbao: 0, silver: 0, copper: 0,
+  neili_current: null as number | null, neili_max: null as number | null, breakthrough_available_at: null as number | null, yuanbao: 0, silver: 0, copper: 0,
   attributes_json: '{}', location_id: 'l', location_name: 'n', version: 0,
 };
 const insertState = (d: ReturnType<typeof fresh>, patch: Partial<typeof baseState> = {}) => {
@@ -67,6 +71,7 @@ describe('数据库约束（E-06）', () => {
     ['内力只有一半为空', { neili_current: 1, neili_max: null }],
     ['内力超过上限', { neili_current: 5, neili_max: 3 }],
     ['版本为负', { version: -1 }],
+    ['冷却时间为负', { breakthrough_available_at: -1 }],
   ])('拒绝：%s', (_n, patch) => {
     const d = fresh();
     insertPlayer(d);
@@ -91,5 +96,41 @@ describe('数据库约束（E-06）', () => {
     insertState(d);
     d.sqlite.prepare("delete from players where id='p1'").run();
     expect((d.sqlite.prepare('select count(*) c from player_states').get() as { c: number }).c).toBe(0);
+  });
+});
+
+describe('带数据升级（已有存档）', () => {
+  it('从旧版本迁移到最新：数据保留，新增列为 NULL', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'jhz-mig-'));
+    try {
+      // 只保留第一个迁移，模拟旧版本数据库
+      cpSync(MIGRATIONS_DIR, tmp, { recursive: true });
+      const journalPath = join(tmp, 'meta', '_journal.json');
+      const journal = JSON.parse(readFileSync(journalPath, 'utf8'));
+      const full = journal.entries;
+      journal.entries = full.slice(0, 1);
+      writeFileSync(journalPath, JSON.stringify(journal));
+
+      const d = openDatabase(':memory:');
+      migrate(d.db, { migrationsFolder: tmp });
+      d.sqlite.prepare("insert into players (id, display_name) values ('p1', '甲')").run();
+      d.sqlite
+        .prepare(
+          `insert into player_states (player_id, realm, realm_progress, hp, max_hp, stamina, max_stamina, yuanbao, silver, copper, attributes_json, location_id, location_name, version)
+           values ('p1','body_tempering',33,90,100,20,50,1,2,3,'{}','l','n',7)`,
+        )
+        .run();
+
+      runMigrations(d.db); // 升级到最新
+      const row = d.sqlite.prepare('select * from player_states').get() as Record<string, unknown>;
+      expect(row.realm_progress).toBe(33);
+      expect(row.version).toBe(7);
+      expect(row.copper).toBe(3);
+      expect(row.breakthrough_available_at).toBeNull();
+      expect(() => d.sqlite.prepare("update player_states set breakthrough_available_at = -5").run()).toThrow(/CHECK/);
+      expect(full.length).toBeGreaterThan(1);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });

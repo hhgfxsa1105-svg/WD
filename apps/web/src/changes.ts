@@ -1,6 +1,13 @@
 import type { ChangeStat, StateChange } from '@jhz/contracts';
 
-const LABEL: Record<ChangeStat, string> = { stamina: '体力', hp: '气血', neili: '内力', realmProgress: '经验' };
+const LABEL: Record<ChangeStat, string> = {
+  stamina: '体力',
+  hp: '气血',
+  neili: '内力',
+  realmProgress: '经验',
+  maxHp: '气血上限',
+  maxStamina: '体力上限',
+};
 
 export interface LogChip {
   text: string;

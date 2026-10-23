@@ -4,6 +4,7 @@ import {
   type PlayerState,
   type StateChange,
 } from '@jhz/contracts';
+import { progressGain } from './progress.js';
 
 /** 数值为占位基线，S2（T-007）统一调整；所有结算为纯函数，不修改入参 */
 export const RULES = {
@@ -31,7 +32,8 @@ function cultivate(p: PlayerState): ActionResolution {
   if (p.stamina < staminaCost) {
     return { ok: false, code: 'INSUFFICIENT_STAMINA', message: `体力不足，修炼需要 ${staminaCost} 点体力` };
   }
-  const gainedProgress = Math.round((baseProgress * (100 + expBonusPercent(p))) / 100);
+  // 功法系统（S2 后续）接入前，统一按凡阶基础吐纳法结算
+  const gainedProgress = progressGain({ base: baseProgress, methodGrade: 'fan', bonusPercent: expBonusPercent(p) });
   const progress = Math.min(100, p.realmProgress + gainedProgress);
   const changes: StateChange[] = [
     { stat: 'stamina', delta: -staminaCost },
