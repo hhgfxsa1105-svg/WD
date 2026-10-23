@@ -7,7 +7,7 @@ import {
   type PlayerState,
   type SubmitActionRequest,
 } from '@jhz/contracts';
-import { checkPlanTarget, parseAiPlan, pillGradeOf } from '@jhz/game-rules';
+import { NPC_DEFS, checkPlanTarget, isNpcId, locationName, parseAiPlan, pillGradeOf } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import { AiError, type AiGateway } from '../ai/index.js';
 import { buildParseMessages, sanitizePlayerInput } from '../ai/prompt.js';
@@ -43,6 +43,21 @@ export function statusText(p: PlayerState): string {
   const neili = p.neili ? `，内力 ${p.neili.current}/${p.neili.max}` : '';
   const { yuanbao, silver, copper } = p.currency;
   return `你如今是${REALM_LABELS[p.realm]}境界，修炼进度 ${p.realmProgress}%；气血 ${p.hp}/${p.maxHp}，体力 ${p.stamina}/${p.maxStamina}${neili}；身上有元宝 ${yuanbao}、银两 ${silver}、铜钱 ${copper}。`;
+}
+
+/** 与人交谈：目前只做存在性与位置判定，不改变任何状态；真正的对话随 NPC 记忆一起开放 */
+export function talkText(player: PlayerState, npcs: { id: string; locationId: string }[], targetId: string | null): string {
+  const here = npcs.filter((n) => n.locationId === player.location.id && isNpcId(n.id));
+  const label = (id: string) => (isNpcId(id) ? `${NPC_DEFS[id].name}（${NPC_DEFS[id].role}）` : id);
+  if (targetId && isNpcId(targetId)) {
+    const npc = npcs.find((n) => n.id === targetId);
+    if (!npc || npc.locationId !== player.location.id) {
+      const where = npc ? locationName(npc.locationId) : null;
+      return `${NPC_DEFS[targetId].name}${where ? `现在在${where}` : '不在这里'}，你得先找过去。`;
+    }
+    return `你走到${label(targetId)}面前，拱手见礼。对方点了点头——更多的话，要等对话功能开放后才能说了。`;
+  }
+  return here.length > 0 ? `你想和谁说话？这里有：${here.map((n) => label(n.id)).join('、')}。` : '这里没有可以交谈的人。';
 }
 
 export interface FreeDeps {
@@ -136,8 +151,11 @@ export function createFreeActionService({ store, actions, cultivation, ai, narra
         return settle(actions.executeFresh(base, { fingerprint, ai: info(true), eventType: 'action.free.breakthrough', preCheck }));
       }
       default:
-        // talk / other：目前没有可交谈的对象或无法归类
-        return clarify(plan.clarification ?? '这里暂时没有可以交谈的人。', plan.intent, plan.action_type);
+        if (plan.action_type === 'talk') {
+          const targetId = plan.target?.type === 'npc' ? plan.target.id : null;
+          return clarify(talkText(player(), store.read((tx) => tx.npcs()), targetId), plan.intent, plan.action_type);
+        }
+        return clarify(plan.clarification ?? '没太明白你想做什么，可以换个说法。', plan.intent, plan.action_type);
     }
   }
 

@@ -3,13 +3,18 @@ import type { GameTx } from '../store/types.js';
 
 type Snapshot = Record<string, unknown>;
 
-/** 审计用快照：角色状态 + 全部已知物品的数量（0 也列出，避免「用完」被当作字段消失）+ 放置修炼状态 */
+/** 嵌套展开的键：差异只列出变化的条目（如 inventory.pill_x、relations.npc_a>player:player_1） */
+const NESTED = ['inventory', 'npcs', 'relations'] as const;
+
+/** 审计用快照：角色状态 + 全部已知物品的数量（0 也列出，避免「用完」被当作字段消失）+ 放置修炼状态 + NPC 状态与关系 */
 export function snapshot(tx: GameTx): Snapshot {
   const qty = new Map(tx.inventory().map((i) => [i.itemId, i.quantity]));
   return {
     ...tx.player(),
     inventory: Object.fromEntries(Object.keys(ITEM_DEFS).map((id) => [id, qty.get(id) ?? 0])),
     cultivation: tx.runningJob() ? 'running' : 'idle',
+    npcs: Object.fromEntries(tx.npcs().map((n) => [n.id, { locationId: n.locationId, status: n.status, goals: n.goals }])),
+    relations: Object.fromEntries(tx.relationships().map((r) => [`${r.npcId}>${r.targetType}:${r.targetId}`, { affinity: r.affinity, trust: r.trust, hostility: r.hostility }])),
   };
 }
 
@@ -24,17 +29,19 @@ export function stateDiff(before: Snapshot, after: Snapshot): { before: Snapshot
   const a: Snapshot = {};
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
     if (same(before[key], after[key])) continue;
-    if (key === 'inventory') {
-      const bi = before.inventory as Record<string, number>;
-      const ai = after.inventory as Record<string, number>;
-      b.inventory = {};
-      a.inventory = {};
+    if ((NESTED as readonly string[]).includes(key)) {
+      const bi = (before[key] ?? {}) as Record<string, unknown>;
+      const ai = (after[key] ?? {}) as Record<string, unknown>;
+      const bo: Snapshot = {};
+      const ao: Snapshot = {};
       for (const id of new Set([...Object.keys(bi), ...Object.keys(ai)])) {
-        if (bi[id] !== ai[id]) {
-          (b.inventory as Snapshot)[id] = bi[id];
-          (a.inventory as Snapshot)[id] = ai[id];
+        if (!same(bi[id], ai[id])) {
+          bo[id] = bi[id];
+          ao[id] = ai[id];
         }
       }
+      b[key] = bo;
+      a[key] = ao;
     } else {
       b[key] = before[key];
       a[key] = after[key];

@@ -144,9 +144,9 @@ describe('自由行动：澄清（不执行、不改状态）', () => {
     const s = await setup({ steps: [plan('teleport_to_moon')] });
     await noChange(s, '飞到月亮上', /换个说法/);
   });
-  it('与人交谈：NPC 尚未开放', async () => {
+  it('与人交谈：NPC 不在当前地点时告知其所在，不改状态', async () => {
     const s = await setup({ steps: [plan('talk', { target: { type: 'npc', id: 'npc_master_qingyun' } })] });
-    await noChange(s, '去找掌门聊聊', /暂时没有/);
+    await noChange(s, '去找掌门聊聊', /青云山 · 大殿/);
   });
   it('目标不存在（编造的丹药）', async () => {
     const s = await setup({ player: full(), steps: [plan('breakthrough', { target: { type: 'item', id: 'pill_breakthrough_god' } })] });

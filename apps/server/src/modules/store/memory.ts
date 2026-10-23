@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { LogRecordSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type PlayerState } from '@jhz/contracts';
+import { LogRecordSchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type NpcState, type PlayerState, type Relationship } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
+import { assertLocation, assertNpc, assertStatus, assertTarget, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 interface State {
@@ -9,6 +10,8 @@ interface State {
   items: Map<string, number>;
   jobs: Map<string, CultivationJobRecord>;
   actions: Map<string, StoredAction>;
+  npcs: Map<string, NpcState>;
+  relations: Map<string, Relationship>;
   events: (AuditEvent & { log: LogRecord | null })[];
   seq: number;
 }
@@ -18,6 +21,8 @@ const cloneState = (s: State): State => ({
   items: new Map(s.items),
   jobs: new Map([...s.jobs].map(([k, v]) => [k, { ...v }])),
   actions: new Map([...s.actions].map(([k, v]) => [k, structuredClone(v)])),
+  npcs: new Map([...s.npcs].map(([k, v]) => [k, structuredClone(v)])),
+  relations: new Map([...s.relations].map(([k, v]) => [k, { ...v }])),
   events: structuredClone(s.events),
   seq: s.seq,
 });
@@ -54,6 +59,31 @@ function makeTx(s: State): GameTx {
         if (other) throw new AppError('CONFLICT', '已有进行中的修炼');
       }
       s.jobs.set(job.id, { ...job });
+    },
+    npcs: () => [...s.npcs.values()].map((n) => structuredClone(n)),
+    relationships: () => [...s.relations.values()].map((r) => ({ ...r })),
+    adjustRelationship(npcId, target, delta) {
+      assertNpc(npcId);
+      assertTarget(npcId, target.type, target.id);
+      const key = relationKey(npcId, target.type, target.id);
+      const next = nextRelationship(s.relations.get(key), npcId, target.type, target.id, delta);
+      s.relations.set(key, next);
+      return { ...next };
+    },
+    moveNpc(npcId, locationId) {
+      assertNpc(npcId);
+      assertLocation(locationId);
+      const cur = s.npcs.get(npcId)!;
+      const next = NpcStateSchema.parse({ ...cur, locationId });
+      s.npcs.set(npcId, next);
+      return structuredClone(next);
+    },
+    setNpcStatus(npcId, status) {
+      assertNpc(npcId);
+      assertStatus(status);
+      const next = NpcStateSchema.parse({ ...s.npcs.get(npcId)!, status });
+      s.npcs.set(npcId, next);
+      return structuredClone(next);
     },
     findActionByKey: (key) => {
       const a = [...s.actions.values()].find((x) => x.idempotencyKey === key);
@@ -107,6 +137,8 @@ export function createMemoryGameStore(initial: PlayerState = createInitialPlayer
     items: new Map(INITIAL_INVENTORY.map((i) => [i.itemId, i.quantity])),
     jobs: new Map(),
     actions: new Map(),
+    npcs: new Map(initialNpcs().map((n) => [n.id, n])),
+    relations: new Map(initialRelationships().map((r) => [relationKey(r.npcId, r.targetType, r.targetId), r])),
     events: [],
     seq: 0,
   };

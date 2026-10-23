@@ -165,10 +165,12 @@ describe('parseAiPlan：目标', () => {
     expect(code(good({ action_type: 'breakthrough', target: t }))).toBe('ILLEGAL_TARGET');
   });
 
-  it('与人交谈：NPC 尚未开放，转为澄清（不执行）', () => {
-    const r = parseAiPlan(good({ action_type: 'talk', target: { type: 'npc', id: 'npc_master_qingyun' } }));
-    expect(r.ok && r.plan.needs_clarification).toBe(true);
-    expect(r.ok && r.plan.clarification).toContain('暂时没有');
+  it('与人交谈：解析通过，是否存在由世界目录判定（已知人物通过，未知人物进入澄清）', () => {
+    const known = parseAiPlan(good({ action_type: 'talk', target: { type: 'npc', id: 'npc_master_qingyun' } }));
+    expect(known.ok && known.plan.needs_clarification).toBe(false);
+    expect(known.ok && checkPlanTarget(known.plan)).toEqual({ ok: true });
+    const unknown = parseAiPlan(good({ action_type: 'talk', target: { type: 'npc', id: 'npc_nobody' } }));
+    expect(unknown.ok && checkPlanTarget(unknown.plan)).toMatchObject({ ok: false, reason: 'UNKNOWN_ENTITY' });
   });
 });
 

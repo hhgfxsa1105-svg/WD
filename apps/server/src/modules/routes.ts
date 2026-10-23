@@ -3,11 +3,13 @@ import {
   AiStatusResponseSchema,
   AuditActionResponseSchema,
   InventoryResponseSchema,
+  NpcListResponseSchema,
   LogResponseSchema,
   PlayerStateSchema,
   SubmitActionRequestSchema,
   WorldTimeResponseSchema,
 } from '@jhz/contracts';
+import { NPC_DEFS, isNpcId, locationName } from '@jhz/game-rules';
 import { z } from 'zod';
 import { AppError, parseWith } from '../shared/errors.js';
 import type { ActionService } from './action/service.js';
@@ -45,6 +47,21 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
         efficiencyPercent: Math.round(cultivation.policy.efficiency * 100),
       },
       clockBehindMs: clockBehindMs(),
+    }),
+  );
+
+  // NPC 列表：静态显示文字 + 当前状态 + 对玩家的态度
+  app.get('/api/v1/world/npcs', async () =>
+    NpcListResponseSchema.parse({
+      npcs: store.read((tx) => {
+        const rels = tx.relationships();
+        return tx.npcs().flatMap((n) => {
+          if (!isNpcId(n.id)) return [];
+          const d = NPC_DEFS[n.id];
+          const rel = rels.find((r) => r.npcId === n.id && r.targetType === 'player');
+          return [{ id: n.id, name: d.name, role: d.role, intro: d.intro, location: { id: n.locationId, name: locationName(n.locationId) ?? n.locationId }, status: n.status, goals: n.goals, towardPlayer: { affinity: rel?.affinity ?? 0, trust: rel?.trust ?? 0, hostility: rel?.hostility ?? 0 } }];
+        });
+      }),
     }),
   );
 

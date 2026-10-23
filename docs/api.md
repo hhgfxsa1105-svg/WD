@@ -11,6 +11,7 @@
 | `GET /player/inventory` | 背包（名称、评级、数量；数量为 0 的不返回） |
 | `POST /actions` | 提交行动，必带 `idempotencyKey`。`kind`：`fixed`（`actionId`: `cultivate`/`rest`）、`breakthrough`（`pillItemId`: 突破丹药物品 ID 或 `null`）、`free`（`input`: 玩家原话，由 AI 解析，见 `docs/ai-contract.md`） |
 | `POST /actions/:id/narrate` | 重新生成叙事（仅对叙事待补的行动调用 AI；只改文字，不改任何状态）。失败 503 `AI_UNAVAILABLE`；已完成的行动直接返回 |
+| `GET /world/npcs` | NPC 列表：名字、身份、简介、当前地点与状态、目标、对玩家的态度（好感/信任/敌意）。只读 |
 | `GET /actions/:id` | 查询已完成行动的结果 |
 | `GET /log?limit=` | 玩家可见日志（结构化记录，按时间正序；`limit` 1–200，默认 100）。刷新、重启后据此还原 |
 | `GET /audit/actions/:id` | 内部审计：行动及其审计事件（前后状态差异）。**仅本机访问**，其他来源 403 |
@@ -47,3 +48,9 @@
 
 ## 审计与日志
 行动结算、扣除丹药、行动记录、审计事件、日志记录在**同一个事务**里提交或回滚。审计事件只记录发生变化的字段（含丹药数量与修炼状态）；放置修炼的空结算（没有收益也没有离线说明）不写事件，避免噪声。日志内容为结构化记录（类型、叙事、数值变化、突破/离线明细），文字排版由前端渲染。
+
+## 存档文件格式
+`npm run db:export` 导出 `{ format: "jianghu-save", schemaVersion, exportedAt, player, world }`。
+- **v2**（当前）：`world` 含 `npcs`（地点、状态、目标）与 `relationships`（好感/信任/敌意）。
+- **v1**（旧）：只有 `player`；导入后人物状态重置为初始。
+- 导入先严格校验：未知字段、数值越界、未知 NPC/地点、关系指向自己或重复，均拒绝；文件里缺少的 NPC/关系用初始值补齐；导入前自动备份当前存档。

@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export * from './enums.js';
 export * from './limits.js';
+export * from './npc.js';
 export * from './player.js';
 export * from './action.js';
 export * from './ai-plan.js';

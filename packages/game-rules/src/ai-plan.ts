@@ -10,6 +10,7 @@ import {
   type AiTargetType,
 } from '@jhz/contracts';
 import { isKnownItem, pillGradeOf } from './items.js';
+import { isLocationId, isNpcId } from './world.js';
 
 /* ------------------------------------------------------------------ */
 /* 1. 从模型原文中提取 JSON                                             */
@@ -122,7 +123,6 @@ const TARGET_TYPE_SYNONYMS: [RegExp, AiTargetType][] = [
 const NO_TARGET_ACTIONS: ReadonlySet<AiActionType> = new Set(['cultivate', 'rest', 'start_idle', 'stop_idle', 'check_status', 'other']);
 
 const DEFAULT_CLARIFICATION = '没太明白你想做什么，可以换个说法，比如「修炼」「休息」或「突破」。';
-const NPC_NOT_READY = '这里暂时没有可以交谈的人。';
 
 const snake = (k: string) => k.trim().replace(/([a-z])([A-Z])/g, '$1_$2').replace(/[\s-]+/g, '_').toLowerCase();
 
@@ -281,13 +281,6 @@ export function parseAiPlan(raw: string, opts: { fallbackIntent?: string } = {})
   let clarification: string | null = cleanText(fields.get('clarification'), AI_LIMITS.clarificationMax) || null;
   if (needsClarification && !clarification) clarification = DEFAULT_CLARIFICATION;
   if (!needsClarification) clarification = null;
-  if (actionType === 'talk' && !needsClarification) {
-    // 与人交谈需要 NPC；NPC 在 S4 开放，此前一律澄清
-    needsClarification = true;
-    clarification = NPC_NOT_READY;
-    notes.push('NPC 尚未开放，转为澄清');
-  }
-
   const intent = cleanText(fields.get('intent'), AI_LIMITS.intentMax) || cleanText(opts.fallbackIntent, AI_LIMITS.intentMax);
   if (!intent) return fail('SCHEMA_INVALID', '模型没有给出意图，且没有可用的玩家原话');
   if (!fields.has('intent') || cleanText(fields.get('intent'), 1) === '') notes.push('缺少 intent，已用玩家原话代替');
@@ -311,7 +304,7 @@ export function parseAiPlan(raw: string, opts: { fallbackIntent?: string } = {})
 /* 4. 目标校验：目标必须是已存在的实体，否则进入澄清                    */
 /* ------------------------------------------------------------------ */
 
-/** 世界里存在哪些实体；后续阶段由 NPC/地点系统实现 */
+/** 世界里存在哪些实体 */
 export interface EntityCatalog {
   itemExists(id: string): boolean;
   npcExists(id: string): boolean;
@@ -320,8 +313,8 @@ export interface EntityCatalog {
 
 export const defaultCatalog: EntityCatalog = {
   itemExists: isKnownItem,
-  npcExists: () => false,
-  locationExists: (id) => id === 'loc_qingyun_gate',
+  npcExists: isNpcId,
+  locationExists: isLocationId,
 };
 
 export type TargetCheck = { ok: true } | { ok: false; reason: 'UNKNOWN_ENTITY' | 'TARGET_NOT_ALLOWED'; clarification: string };

@@ -10,3 +10,4 @@ export * from './narrative.js';
 export * from './progress.js';
 export * from './rng.js';
 export * from './tables.js';
+export * from './world.js';

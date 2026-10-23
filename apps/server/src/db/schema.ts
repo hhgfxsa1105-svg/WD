@@ -200,3 +200,51 @@ export const aiCallLogs = sqliteTable(
     check('ai_call_logs_nonneg', sql`${t.requestChars} >= 0 and (${t.responseChars} is null or ${t.responseChars} >= 0) and (${t.latencyMs} is null or ${t.latencyMs} >= 0)`),
   ],
 );
+
+/** 与 @jhz/contracts / game-rules 保持一致（测试校验）；此处内联原因同 DB_REALMS */
+export const DB_NPC_STATUSES = ['active', 'away', 'resting'] as const;
+const npcStatusList = sql.raw(DB_NPC_STATUSES.map((r) => `'${r}'`).join(', '));
+
+/** NPC 的可变状态（权威存档）。名字、身份、简介来自静态定义，不存数据库；地点 ID 由代码按定义校验 */
+export const npcs = sqliteTable(
+  'npcs',
+  {
+    id: text('id').primaryKey(),
+    locationId: text('location_id').notNull(),
+    status: text('status').notNull(),
+    goalsJson: text('goals_json').notNull(),
+    createdAt: integer('created_at').notNull().default(nowMs),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    check('npcs_id_format', sql`${t.id} glob 'npc_*' and length(${t.id}) <= 64`),
+    check('npcs_location_format', sql`${t.locationId} glob 'loc_*' and length(${t.locationId}) <= 64`),
+    check('npcs_status_valid', sql`${t.status} in (${npcStatusList})`),
+    check('npcs_goals_json_valid', sql`json_valid(${t.goalsJson}) and json_type(${t.goalsJson}) = 'array'`),
+    index('npcs_location_idx').on(t.locationId),
+  ],
+);
+
+/** NPC 关系：方向固定为 npc_id → (target_type, target_id)；数值范围由 CHECK 约束 */
+export const npcRelationships = sqliteTable(
+  'npc_relationships',
+  {
+    npcId: text('npc_id').notNull(),
+    targetType: text('target_type').notNull(),
+    targetId: text('target_id').notNull(),
+    affinity: integer('affinity').notNull(),
+    trust: integer('trust').notNull(),
+    hostility: integer('hostility').notNull(),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    primaryKey({ columns: [t.npcId, t.targetType, t.targetId] }),
+    foreignKey({ columns: [t.npcId], foreignColumns: [npcs.id] }).onDelete('cascade'),
+    check('npc_relationships_target_type', sql`${t.targetType} in ('player', 'npc')`),
+    check('npc_relationships_no_self', sql`not (${t.targetType} = 'npc' and ${t.targetId} = ${t.npcId})`),
+    check('npc_relationships_affinity_range', sql`${t.affinity} between -100 and 100`),
+    check('npc_relationships_trust_range', sql`${t.trust} between 0 and 100`),
+    check('npc_relationships_hostility_range', sql`${t.hostility} between 0 and 100`),
+    index('npc_relationships_target_idx').on(t.targetType, t.targetId),
+  ],
+);

@@ -3,16 +3,21 @@ import { and, asc, count, desc, eq, isNotNull } from 'drizzle-orm';
 import {
   ActionResponseSchema,
   LogRecordSchema,
+  NpcStateSchema,
   PlayerStateSchema,
+  RelationshipSchema,
   type AuditEvent,
   type Honorific,
   type LogRecord,
+  type NpcState,
   type PlayerState,
+  type Relationship,
 } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import type { Db } from '../../db/connection.js';
-import { actions, aiCallLogs, auditEvents, cultivationJobs, inventory, playerStates, players, worldClock } from '../../db/schema.js';
+import { actions, aiCallLogs, auditEvents, cultivationJobs, inventory, npcRelationships, npcs, playerStates, players, worldClock } from '../../db/schema.js';
 import { AppError } from '../../shared/errors.js';
+import { assertLocation, assertNpc, assertStatus, assertTarget, initialNpcs, initialRelationships, nextRelationship } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 /** 单机固定的玩家 ID */
@@ -151,6 +156,37 @@ function makeTx(db: Executor): GameTx {
         .run();
     },
 
+    npcs: () => readNpcs(db),
+    relationships: () => readRelationships(db),
+    adjustRelationship(npcId, target, delta) {
+      assertNpc(npcId);
+      assertTarget(npcId, target.type, target.id);
+      const cur = readRelationships(db).find((r) => r.npcId === npcId && r.targetType === target.type && r.targetId === target.id);
+      const next = nextRelationship(cur, npcId, target.type, target.id, delta);
+      db.insert(npcRelationships)
+        .values({ npcId, targetType: target.type, targetId: target.id, affinity: next.affinity, trust: next.trust, hostility: next.hostility })
+        .onConflictDoUpdate({
+          target: [npcRelationships.npcId, npcRelationships.targetType, npcRelationships.targetId],
+          set: { affinity: next.affinity, trust: next.trust, hostility: next.hostility, updatedAt: Date.now() },
+        })
+        .run();
+      return next;
+    },
+    moveNpc(npcId, locationId) {
+      assertNpc(npcId);
+      assertLocation(locationId);
+      const res = db.update(npcs).set({ locationId, updatedAt: Date.now() }).where(eq(npcs.id, npcId)).run();
+      if (res.changes === 0) throw new AppError('NOT_FOUND', '没有这个人物');
+      return readNpcs(db).find((n) => n.id === npcId)!;
+    },
+    setNpcStatus(npcId, status) {
+      assertNpc(npcId);
+      assertStatus(status);
+      const res = db.update(npcs).set({ status, updatedAt: Date.now() }).where(eq(npcs.id, npcId)).run();
+      if (res.changes === 0) throw new AppError('NOT_FOUND', '没有这个人物');
+      return readNpcs(db).find((n) => n.id === npcId)!;
+    },
+
     findActionByKey(key) {
       const r = db.select().from(actions).where(and(eq(actions.playerId, PLAYER_ID), eq(actions.idempotencyKey, key))).get();
       return r ? rowToAction(r) : null;
@@ -255,6 +291,25 @@ function rowToAction(r: typeof actions.$inferSelect): StoredAction {
   };
 }
 
+function readNpcs(db: Executor): NpcState[] {
+  return db
+    .select()
+    .from(npcs)
+    .orderBy(asc(npcs.id))
+    .all()
+    // 读出时同样校验，损坏的记录不会悄悄进入游戏
+    .map((r) => NpcStateSchema.parse({ id: r.id, locationId: r.locationId, status: r.status, goals: JSON.parse(r.goalsJson) }));
+}
+
+function readRelationships(db: Executor): Relationship[] {
+  return db
+    .select()
+    .from(npcRelationships)
+    .orderBy(asc(npcRelationships.npcId), asc(npcRelationships.targetType), asc(npcRelationships.targetId))
+    .all()
+    .map((r) => RelationshipSchema.parse({ npcId: r.npcId, targetType: r.targetType, targetId: r.targetId, affinity: r.affinity, trust: r.trust, hostility: r.hostility }));
+}
+
 /** 直接写入（覆盖）整个角色状态并指定版本；仅供导入存档使用 */
 export function writePlayerState(db: Db, state: PlayerState): void {
   const valid = PlayerStateSchema.parse(state);
@@ -273,6 +328,22 @@ export function writePlayerState(db: Db, state: PlayerState): void {
   );
 }
 
+/** 覆盖写入 NPC 状态与关系（导入存档用）；world 为 null 表示重置为初始。世界数据须已通过 mergeImportedWorld 校验 */
+export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships: Relationship[] } | null): void {
+  const w = world ?? { npcs: initialNpcs(), relationships: initialRelationships() };
+  db.transaction(
+    (tx) => {
+      tx.delete(npcRelationships).run();
+      for (const n of w.npcs) {
+        const v = { locationId: n.locationId, status: n.status, goalsJson: JSON.stringify(n.goals) };
+        tx.insert(npcs).values({ id: n.id, ...v }).onConflictDoUpdate({ target: npcs.id, set: { ...v, updatedAt: Date.now() } }).run();
+      }
+      for (const r of w.relationships) tx.insert(npcRelationships).values(r).run();
+    },
+    { behavior: 'immediate' },
+  );
+}
+
 /** 首次启动写入初始角色与初始库存；已有数据不做任何修改（库存行存在即不再补发） */
 export function ensureSeed(db: Db, initial: PlayerState = createInitialPlayer()): void {
   const valid = PlayerStateSchema.parse(initial);
@@ -285,6 +356,13 @@ export function ensureSeed(db: Db, initial: PlayerState = createInitialPlayer())
         .run();
       for (const it of INITIAL_INVENTORY) {
         tx.insert(inventory).values({ playerId: PLAYER_ID, itemId: it.itemId, quantity: it.quantity }).onConflictDoNothing().run();
+      }
+      // 世界：只补齐缺失的 NPC 与关系，已有的状态（地点、关系数值）一律不覆盖
+      for (const n of initialNpcs()) {
+        tx.insert(npcs).values({ id: n.id, locationId: n.locationId, status: n.status, goalsJson: JSON.stringify(n.goals) }).onConflictDoNothing().run();
+      }
+      for (const r of initialRelationships()) {
+        tx.insert(npcRelationships).values(r).onConflictDoNothing().run();
       }
     },
     { behavior: 'immediate' },

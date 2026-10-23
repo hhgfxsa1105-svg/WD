@@ -1,4 +1,5 @@
-import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LogRecord, PlayerState } from '@jhz/contracts';
+import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LogRecord, NpcState, PlayerState, Relationship } from '@jhz/contracts';
+import type { NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
 
 export interface CultivationJobRecord {
   id: string;
@@ -49,6 +50,16 @@ export interface GameTx {
   runningJob(): CultivationJobRecord | null;
   /** 新建或更新（按 id） */
   saveJob(job: CultivationJobRecord): void;
+
+  /** 全部 NPC 的可变状态（显示文字来自静态定义） */
+  npcs(): NpcState[];
+  /** 全部关系；方向为 npcId → (targetType, targetId) */
+  relationships(): Relationship[];
+  /** 按规则改变关系：单次每项限幅 ±20 并夹回合法范围；NPC 或对象不存在抛 NOT_FOUND；返回新值 */
+  adjustRelationship(npcId: string, target: { type: RelationTargetType; id: string }, delta: RelationDelta): Relationship;
+  /** 移动 NPC；NPC 或地点不存在抛 NOT_FOUND */
+  moveNpc(npcId: string, locationId: string): NpcState;
+  setNpcStatus(npcId: string, status: NpcStatus): NpcState;
 
   findActionByKey(idempotencyKey: string): StoredAction | null;
   getAction(id: string): StoredAction | null;

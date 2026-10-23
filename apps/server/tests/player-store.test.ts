@@ -260,7 +260,7 @@ describe('存档导出 / 导入', () => {
     runMigrations(d.db);
     const s = createSqliteGameStore(d.db);
     s.transact((tx) => tx.savePlayer(spend(tx.player())));
-    const text = JSON.stringify(buildSaveFile(s.read((tx) => tx.player())));
+    const text = JSON.stringify(buildSaveFile(...s.read((tx) => [tx.player(), { npcs: tx.npcs(), relationships: tx.relationships() }] as const)));
 
     const d2 = openDatabase(':memory:');
     runMigrations(d2.db);

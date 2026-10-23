@@ -1,5 +1,5 @@
 import { AI_ACTION_TYPES, AI_LIMITS, AI_RISK_TAGS } from '@jhz/contracts';
-import { ITEM_DEFS } from '@jhz/game-rules';
+import { ITEM_DEFS, NPC_DEFS } from '@jhz/game-rules';
 import type { AiMessage } from './types.js';
 
 /** 玩家原话的长度上限（与自由行动契约一致） */
@@ -33,6 +33,11 @@ const pillList = () =>
     .map(([id, d]) => `${id}（${d.name}）`)
     .join('、');
 
+const npcList = () =>
+  Object.entries(NPC_DEFS)
+    .map(([id, d]) => `${id}（${d.name}，${d.role}）`)
+    .join('、');
+
 /** 系统提示：精简（控制 token 成本）；不含任何玩家输入 */
 export function buildSystemPrompt(): string {
   return [
@@ -49,6 +54,7 @@ export function buildSystemPrompt(): string {
     ...AI_ACTION_TYPES.map((t) => `- ${t}：${ACTION_HELP[t]}`),
     '',
     `可用的突破丹药 ID：${pillList()}。只能使用这些 ID，不要编造；玩家没提丹药就不要填 target。`,
+    `可交谈的人物 ID：${npcList()}。与人交谈时 target 为 {"type":"npc","id":"人物ID"}；只能使用这些 ID，没提到具体的人就不要填 target。`,
     `不要输出任何数值（银两、伤害、成功率、经验等），不要输出 requirements。steps 与 risk_tags 可以省略（risk_tags 只能是 ${AI_RISK_TAGS.join('、')}）。`,
     '',
     '示例：',

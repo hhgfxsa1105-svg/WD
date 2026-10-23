@@ -65,7 +65,7 @@ describe.each(MODES)('降级矩阵：$name', (mode) => {
     }
     LogResponseSchema.parse((await g.get('/api/v1/log')).json());
     // 存档导出再解析
-    const saved = buildSaveFile(g.store.read((tx) => tx.player()));
+    const saved = buildSaveFile(...g.store.read((tx) => [tx.player(), { npcs: tx.npcs(), relationships: tx.relationships() }] as const));
     expect(parseSaveFile(JSON.stringify(saved)).player).toEqual(saved.player);
   });
 

@@ -110,6 +110,7 @@ describe('不变量：任意操作序列下状态始终合法', () => {
 
 describe('审计可重放：按序重放全部审计差异，必须恰好得到最终状态', () => {
   type Snap = Record<string, unknown>;
+  const NESTED = ['inventory', 'npcs', 'relations'];
   const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
   function replay(w: World, initial: Snap): Snap {
@@ -124,16 +125,16 @@ describe('审计可重放：按序重放全部审计差异，必须恰好得到�
       const before = (r.before_json ? JSON.parse(r.before_json) : {}) as Snap;
       const after = (r.after_json ? JSON.parse(r.after_json) : {}) as Snap;
       for (const k of Object.keys(before)) {
-        if (k === 'inventory') {
-          for (const id of Object.keys(before.inventory as object)) {
-            expect((cur.inventory as Snap)[id], `事件 ${r.seq}(${r.event_type}) 的前值与重放状态不符：inventory.${id}`).toEqual((before.inventory as Snap)[id]);
+        if (NESTED.includes(k)) {
+          for (const id of Object.keys(before[k] as object)) {
+            expect(((cur[k] ?? {}) as Snap)[id], `事件 ${r.seq}(${r.event_type}) 的前值与重放状态不符：${k}.${id}`).toEqual((before[k] as Snap)[id]);
           }
         } else {
           expect(cur[k], `事件 ${r.seq}(${r.event_type}) 的前值与重放状态不符：${k}`).toEqual(before[k]);
         }
       }
       for (const k of Object.keys(after)) {
-        if (k === 'inventory') Object.assign(cur.inventory as Snap, after.inventory);
+        if (NESTED.includes(k)) Object.assign((cur[k] ??= {}) as Snap, after[k]);
         else cur[k] = after[k];
       }
     }

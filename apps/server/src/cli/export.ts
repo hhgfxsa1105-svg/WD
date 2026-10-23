@@ -10,7 +10,9 @@ const env = loadEnv();
 const out = process.argv[2];
 const database = openDatabase(env.DB_PATH);
 runMigrations(database.db);
-const save = buildSaveFile(createSqliteGameStore(database.db).read((tx) => tx.player()));
+const save = buildSaveFile(
+  ...createSqliteGameStore(database.db).read((tx) => [tx.player(), { npcs: tx.npcs(), relationships: tx.relationships() }] as const),
+);
 database.close();
 const text = JSON.stringify(save, null, 2) + '\n';
 if (out) {
