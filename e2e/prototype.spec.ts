@@ -4,8 +4,8 @@ import { expect, test } from './fixtures';
 const stamina = async (page: Page) => Number(await page.getByRole('progressbar', { name: '体力' }).getAttribute('aria-valuenow'));
 const progress = async (page: Page) => Number(await page.getByRole('progressbar', { name: '晋级进度' }).getAttribute('aria-valuenow'));
 const openActions = (page: Page) => page.getByRole('button', { name: '行动', exact: true }).click();
-const cultivate = (page: Page) => page.locator('.act', { hasText: '修炼' });
-const rest = (page: Page) => page.locator('.act', { hasText: '休息' });
+const cultivate = (page: Page) => page.locator('.act:not(.bt)', { hasText: '修炼' });
+const rest = (page: Page) => page.locator('.act:not(.bt)', { hasText: '休息' });
 
 test.beforeEach(async ({ page, server }) => {
   await page.goto(server.url);
@@ -57,7 +57,7 @@ test('体力耗尽后修炼禁用并提示，休息后恢复', async ({ page }) 
   expect(await stamina(page)).toBe(0);
   expect(await progress(page)).toBe(55);
   await expect(cultivate(page)).toBeDisabled();
-  await expect(page.getByText('体力不足，先休息一下。')).toBeVisible();
+  await expect(page.getByText('体力不足，先休息一下再修炼。')).toBeVisible();
   await rest(page).click();
   await expect(page.locator('.entry')).toHaveCount(7);
   expect(await stamina(page)).toBe(15);

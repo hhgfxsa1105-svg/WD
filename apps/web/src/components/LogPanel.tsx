@@ -29,6 +29,7 @@ export function LogPanel({ entries }: { entries: LogEntry[] }) {
                   ))}
                 </div>
               )}
+              {e.sub && <div className="sub">{e.sub}</div>}
             </div>
           </li>
         ))}

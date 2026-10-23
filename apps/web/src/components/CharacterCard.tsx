@@ -1,14 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { realmHasNeili, type Honorific, type PlayerState } from '@jhz/contracts';
-import { ATTRIBUTE_ORDER, GRADE_LABEL, GRADE_RANK, REALM_LABEL } from '../labels';
-
-function Grade({ grade }: { grade: Honorific['grade'] }) {
-  return (
-    <em className="g" data-g={GRADE_RANK[grade]}>
-      {GRADE_LABEL[grade]}
-    </em>
-  );
-}
+import { ATTRIBUTE_ORDER, REALM_LABEL } from '../labels';
+import { GradeTag } from './GradeTag';
 
 function Bar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
   return (
@@ -60,7 +53,7 @@ export function CharacterCard({ player: p }: { player: PlayerState }) {
           <span className="tag">
             <i>头衔</i>
             {p.title ? p.title.name : '无'}
-            {p.title && <Grade grade={p.title.grade} />}
+            {p.title && <GradeTag grade={p.title.grade} />}
           </span>
           {open && (
             <div className="pop" id="namePop">
@@ -70,7 +63,7 @@ export function CharacterCard({ player: p }: { player: PlayerState }) {
                   <div className="row" key={key}>
                     <i>{label}</i>
                     <b>{h ? h.name : '无'}</b>
-                    {h && <Grade grade={h.grade} />}
+                    {h && <GradeTag grade={h.grade} />}
                     {h && h.effects.length > 0 && <p>{h.effects.map((e) => e.text).join('；')}</p>}
                   </div>
                 );

@@ -17,6 +17,13 @@ const freePort = () =>
 
 export interface GameServer {
   url: string;
+  /** 把服务端时钟向前拨动（毫秒） */
+  advance(ms: number): Promise<void>;
+  /** 设定之后所有随机判定使用的值（0 ≤ v < 1；0 必成功，0.9999 必失败） */
+  setRng(value: number): Promise<void>;
+  /** 直接修改角色状态（用于构造「进度已满」等场景） */
+  setPlayer(patch: Record<string, unknown>): Promise<void>;
+  addItem(itemId: string, quantity: number): Promise<void>;
   /** 优雅关闭并用同一份存档重新启动（端口不变） */
   restart(): Promise<void>;
 }
@@ -42,7 +49,7 @@ export const test = base.extend<{ server: GameServer }>({
     let child: ChildProcess | undefined;
 
     const start = async () => {
-      child = spawn('node_modules/.bin/tsx', ['apps/server/src/index.ts'], {
+      child = spawn('node_modules/.bin/tsx', ['e2e/test-server.ts'], {
         env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', DB_PATH: join(dir, 'save.sqlite') },
         stdio: 'ignore',
       });
@@ -56,9 +63,22 @@ export const test = base.extend<{ server: GameServer }>({
       await exited;
     };
 
+    const post = async (path: string, body: unknown) => {
+      const r = await fetch(`${url}/__test/${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) throw new Error(`测试接口 ${path} 失败：${r.status} ${await r.text()}`);
+    };
+
     await start();
     await use({
       url,
+      advance: (ms) => post('advance', { ms }),
+      setRng: (value) => post('rng', { value }),
+      setPlayer: (patch) => post('player', patch),
+      addItem: (itemId, quantity) => post('item', { itemId, quantity }),
       restart: async () => {
         await stop();
         await start();

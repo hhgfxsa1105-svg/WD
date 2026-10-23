@@ -5,6 +5,8 @@ export interface LogEntry {
   time: string;
   text: string;
   chips: LogChip[];
+  /** 小字补充，如「成功率 · 掷点」「放置修炼 · 结算 N 分钟」 */
+  sub?: string;
   system?: boolean;
 }
 

@@ -15,7 +15,7 @@
     "dev": "concurrently -n server,web -c blue,green \"npm run dev -w @jhz/server\" \"npm run dev -w @jhz/web\"",
     "build": "npm run build -w @jhz/web",
     "start": "npm run build && npm run start -w @jhz/server",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p e2e/tsconfig.json",
     "test": "vitest run",
     "db:generate": "npm run db:generate -w @jhz/server",
     "db:migrate": "npm run db:migrate -w @jhz/server",

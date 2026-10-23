@@ -1,10 +1,15 @@
 import {
   ActionResponseSchema,
+  CultivationResponseSchema,
   ErrorResponseSchema,
+  InventoryResponseSchema,
   PlayerStateSchema,
   type ActionResponse,
+  type CultivationResponse,
   type FixedActionId,
+  type InventoryItem,
   type PlayerState,
+  type SubmitActionRequest,
 } from '@jhz/contracts';
 
 /** 接口错误：message 可直接展示给玩家 */
@@ -45,9 +50,25 @@ export const newIdempotencyKey = (): string =>
     ? crypto.randomUUID()
     : `k-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
-export const submitFixedAction = (actionId: FixedActionId, idempotencyKey = newIdempotencyKey()): Promise<ActionResponse> =>
-  request('/api/v1/actions', ActionResponseSchema, {
+export const fetchInventory = async (): Promise<InventoryItem[]> =>
+  (await request('/api/v1/player/inventory', InventoryResponseSchema)).items;
+
+const postJson = <T>(path: string, schema: { parse: (d: unknown) => T }, body?: unknown) =>
+  request(path, schema, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ kind: 'fixed', idempotencyKey, actionId }),
+    body: JSON.stringify(body ?? {}),
   });
+
+const submit = (body: SubmitActionRequest): Promise<ActionResponse> => postJson('/api/v1/actions', ActionResponseSchema, body);
+
+export const submitFixedAction = (actionId: FixedActionId, idempotencyKey = newIdempotencyKey()): Promise<ActionResponse> =>
+  submit({ kind: 'fixed', idempotencyKey, actionId });
+
+export const submitBreakthrough = (pillItemId: string | null, idempotencyKey = newIdempotencyKey()): Promise<ActionResponse> =>
+  submit({ kind: 'breakthrough', idempotencyKey, pillItemId });
+
+export const fetchCultivation = (): Promise<CultivationResponse> => request('/api/v1/cultivation', CultivationResponseSchema);
+export const startCultivation = (): Promise<CultivationResponse> => postJson('/api/v1/cultivation/start', CultivationResponseSchema);
+export const settleCultivation = (): Promise<CultivationResponse> => postJson('/api/v1/cultivation/settle', CultivationResponseSchema);
+export const stopCultivation = (): Promise<CultivationResponse> => postJson('/api/v1/cultivation/stop', CultivationResponseSchema);
