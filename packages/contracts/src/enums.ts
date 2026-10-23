@@ -13,6 +13,17 @@ export const REALMS = [
 export const RealmSchema = z.enum(REALMS);
 export type Realm = z.infer<typeof RealmSchema>;
 
+/** 境界的中文名（服务端叙事与前端显示共用） */
+export const REALM_LABELS: Record<Realm, string> = {
+  body_tempering: '炼体',
+  opening: '通窍',
+  houtian: '后天',
+  xiantian: '先天',
+  grandmaster: '宗师',
+  mingshen: '明神',
+  land_immortal: '陆地神仙',
+};
+
 /** 评级：功法、头衔、称号、命格共用（凡 / 黄 / 玄 / 地 / 天） */
 export const GRADES = ['fan', 'huang', 'xuan', 'di', 'tian'] as const;
 export const GradeSchema = z.enum(GRADES);
@@ -69,6 +80,7 @@ export const ERROR_CODES = [
   'VALIDATION_FAILED',
   'NOT_FOUND',
   'FORBIDDEN',
+  'AI_UNAVAILABLE',
   'CONFLICT',
   'PRECONDITION_FAILED',
   'INTERNAL_ERROR',

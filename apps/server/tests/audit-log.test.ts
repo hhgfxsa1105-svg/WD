@@ -263,7 +263,7 @@ describe('持久化（文件数据库）：幂等与日志跨重启', () => {
         const player = tx.player();
         tx.takeItem(PILL, 1);
         tx.savePlayer(player);
-        tx.saveAction({ ...base, response: { actionId: 'act-1', status: 'COMPLETED', narrative: 'x', changes: [], breakthrough: null, log: null, player } });
+        tx.saveAction({ ...base, response: { actionId: 'act-1', status: 'COMPLETED', narrative: 'x', changes: [], breakthrough: null, log: null, ai: null, player } });
         tx.appendEvent({ actionId: 'act-1', eventType: 'x', before: { a: 1 }, after: { a: 2 }, at: T0, log: { type: 'system', narrative: 'n', changes: [], breakthrough: null, idle: null, note: null } });
         throw new Error('boom');
       }),
@@ -272,6 +272,25 @@ describe('持久化（文件数据库）：幂等与日志跨重启', () => {
     expect(count(d, 'audit_events')).toBe(0);
     expect(store.read((tx) => tx.inventory().find((i) => i.itemId === PILL)?.quantity)).toBe(1);
     expect(store.read((tx) => tx.player().version)).toBe(0);
+    d.close();
+  });
+});
+
+describe('旧存档兼容：旧版本写入的行动响应（没有 ai 字段）', () => {
+  it('SQLite：从库里读出时补默认值，同键重试照常回放', async () => {
+    const d = openDatabase(':memory:');
+    runMigrations(d.db);
+    const store = createSqliteGameStore(d.db);
+    const s = await setup({ store });
+    const first = parse(await s.cultivate(1));
+    // 模拟 T-010 时期的存档：响应 JSON 里没有 ai 字段
+    const row = d.sqlite.prepare('select id, response_json from actions').get() as { id: string; response_json: string };
+    const legacy = JSON.parse(row.response_json);
+    delete legacy.ai;
+    d.sqlite.prepare('update actions set response_json = ? where id = ?').run(JSON.stringify(legacy), row.id);
+    const replay = parse(await s.cultivate(1));
+    expect(replay.actionId).toBe(first.actionId);
+    expect(replay.ai).toBeNull();
     d.close();
   });
 });

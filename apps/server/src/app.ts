@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import type { HealthResponse } from '@jhz/contracts';
+import { createFreeActionService } from './modules/action/free.js';
 import { createActionService } from './modules/action/service.js';
 import { createGatewayFromConfig, loadAiConfig, type AiGateway } from './modules/ai/index.js';
 import { createCultivationService, type OfflinePolicy } from './modules/cultivation/service.js';
@@ -45,14 +46,18 @@ export async function buildApp({
     version: '0.1.0',
   }));
 
+  const actions = createActionService({ store, clock, rng });
+  const cultivation = createCultivationService({ store, clock, offline });
   registerGameRoutes(app, {
     store,
-    actions: createActionService({ store, clock, rng }),
-    cultivation: createCultivationService({ store, clock, offline }),
+    actions,
+    cultivation,
     clock,
     clockBehindMs,
     ai,
+    free: createFreeActionService({ store, actions, cultivation, ai }),
   });
+
 
   if (existsSync(WEB_DIST)) {
     await app.register(fastifyStatic, { root: WEB_DIST });

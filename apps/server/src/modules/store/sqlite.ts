@@ -236,7 +236,8 @@ function rowToAction(r: typeof actions.$inferSelect): StoredAction {
     fingerprint: r.fingerprint,
     status: r.status as StoredAction['status'],
     // 读出时同样校验，损坏的记录不会被当作「首次结果」回放
-    response: ActionResponseSchema.parse(JSON.parse(r.responseJson)),
+    // 旧版本写入的响应没有后续新增的字段（如 ai），读取时补上默认值，保证旧存档的幂等回放继续可用
+    response: ActionResponseSchema.parse({ ai: null, ...JSON.parse(r.responseJson) }),
     createdAt: r.createdAt,
   };
 }

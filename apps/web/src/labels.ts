@@ -1,14 +1,6 @@
-import type { AttributeKey, Grade, Realm } from '@jhz/contracts';
+import { REALM_LABELS, type AttributeKey, type Grade, type Realm } from '@jhz/contracts';
 
-export const REALM_LABEL: Record<Realm, string> = {
-  body_tempering: '炼体',
-  opening: '通窍',
-  houtian: '后天',
-  xiantian: '先天',
-  grandmaster: '宗师',
-  mingshen: '明神',
-  land_immortal: '陆地神仙',
-};
+export const REALM_LABEL: Record<Realm, string> = REALM_LABELS;
 
 export const GRADE_LABEL: Record<Grade, string> = { fan: '凡', huang: '黄', xuan: '玄', di: '地', tian: '天' };
 export const GRADE_RANK: Record<Grade, number> = { fan: 1, huang: 2, xuan: 3, di: 4, tian: 5 };

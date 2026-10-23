@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ActionStatusSchema, ChangeStatSchema, FixedActionIdSchema } from './enums.js';
+import { AiActionTypeSchema } from './ai-plan.js';
 import { ItemIdSchema } from './inventory.js';
 import { LogRecordSchema } from './log.js';
 import { PlayerStateSchema } from './player.js';
@@ -55,6 +56,17 @@ export const ActionResponseSchema = z
       .nullable(),
     /** 本次行动写入的日志记录（重试回放时与首次相同） */
     log: LogRecordSchema.nullable(),
+    /** 仅自由行动有值：AI 对玩家意图的理解与处理结果；固定行动为 null */
+    ai: z
+      .object({
+        intent: z.string().max(200),
+        actionType: AiActionTypeSchema,
+        /** 是否已执行（false 表示需要澄清，未改变任何状态） */
+        executed: z.boolean(),
+        clarification: z.string().max(200).nullable(),
+      })
+      .strict()
+      .nullable(),
     player: PlayerStateSchema,
   })
   .strict();

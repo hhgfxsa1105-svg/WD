@@ -85,10 +85,13 @@ describe('POST /actions 固定行动', () => {
     expect((await post(fixed('cultivate', 200))).statusCode).toBe(200);
   });
 
-  it('自由行动尚未开放', async () => {
+  it('自由行动：AI 未开启时返回 503 与友好提示，状态不变', async () => {
     const { post, state } = await setup();
     const res = await post({ kind: 'free', idempotencyKey: key(1), input: '拜访掌门' });
-    expect(res.statusCode).toBe(422);
+    expect(res.statusCode).toBe(503);
+    const body = ErrorResponseSchema.parse(res.json());
+    expect(body.code).toBe('AI_UNAVAILABLE');
+    expect(body.message).toContain('固定选项');
     expect((await state()).version).toBe(0);
   });
 

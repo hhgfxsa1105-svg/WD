@@ -11,6 +11,7 @@ import {
 import { z } from 'zod';
 import { AppError, parseWith } from '../shared/errors.js';
 import type { ActionService } from './action/service.js';
+import type { FreeActionService } from './action/free.js';
 import type { CultivationService } from './cultivation/service.js';
 import type { GameStore } from './store/types.js';
 import type { Clock } from '../shared/runtime.js';
@@ -24,11 +25,12 @@ interface Deps {
   /** 系统时间落后于世界时间的时长（仅 WorldClock 提供），正常为 0 */
   clockBehindMs: () => number;
   ai: AiGateway;
+  free: FreeActionService;
 }
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
-export function registerGameRoutes(app: FastifyInstance, { store, actions, cultivation, clock, clockBehindMs, ai }: Deps) {
+export function registerGameRoutes(app: FastifyInstance, { store, actions, cultivation, clock, clockBehindMs, ai, free }: Deps) {
   // AI 功能状态：不含任何密钥与地址
   app.get('/api/v1/ai/status', async () => AiStatusResponseSchema.parse(ai.status()));
 
@@ -47,7 +49,10 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
   app.get('/api/v1/player/state', async () => PlayerStateSchema.parse(store.read((tx) => tx.player())));
   app.get('/api/v1/player/inventory', async () => InventoryResponseSchema.parse({ items: store.read((tx) => tx.inventory()) }));
 
-  app.post('/api/v1/actions', async (req) => actions.submit(parseWith(SubmitActionRequestSchema, req.body)));
+  app.post('/api/v1/actions', async (req) => {
+    const body = parseWith(SubmitActionRequestSchema, req.body);
+    return body.kind === 'free' ? free.submit(body) : actions.submit(body);
+  });
   app.get<{ Params: { id: string } }>('/api/v1/actions/:id', async (req) => actions.get(req.params.id));
 
   app.get('/api/v1/log', async (req) => {

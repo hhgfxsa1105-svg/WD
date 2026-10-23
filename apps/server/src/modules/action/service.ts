@@ -44,6 +44,17 @@ export interface ActionDeps {
 
 type Req = Exclude<SubmitActionRequest, { kind: 'free' }>;
 
+/** 自由行动复用结算管线时的附加信息 */
+export interface ExecuteExtra {
+  /** 覆盖指纹（自由行动用「free:输入摘要」，使同键异输入返回 409） */
+  fingerprint?: string;
+  ai?: ActionResponse['ai'];
+  /** 覆盖审计事件类型，如 action.free.cultivate */
+  eventType?: string;
+  /** 在事务内、结算之前执行的额外前置检查；失败请抛出 AppError */
+  preCheck?: (tx: GameTx) => void;
+}
+
 export function createActionService({ store, clock, rng }: ActionDeps) {
   /** 事务内结算：任何失败都会抛出，使丹药扣除、状态变更、行动与审计记录一并回滚 */
   function resolveInTx(tx: GameTx, req: Req, now: number): Resolved {
@@ -89,11 +100,20 @@ export function createActionService({ store, clock, rng }: ActionDeps) {
     };
   }
 
-  function submit(req: SubmitActionRequest): ActionResponse {
-    if (req.kind === 'free') {
-      throw new AppError('PRECONDITION_FAILED', '自由行动尚未开放，请使用固定行动');
-    }
-    const fingerprint = req.kind === 'fixed' ? `fixed:${req.actionId}` : `breakthrough:${req.pillItemId ?? ''}`;
+  const fingerprintOf = (req: Req) => (req.kind === 'fixed' ? `fixed:${req.actionId}` : `breakthrough:${req.pillItemId ?? ''}`);
+
+  /** 只查重放：同一幂等键已有记录时返回首次结果（指纹不同则 409）；没有记录返回 null。自由行动用它在调用 AI 之前先拦截重复请求。 */
+  function findReplay(idempotencyKey: string, fingerprint: string): ActionResponse | null {
+    return store.read((tx) => {
+      const seen = tx.findActionByKey(idempotencyKey);
+      if (!seen) return null;
+      if (seen.fingerprint !== fingerprint) throw new AppError('CONFLICT', '该幂等键已用于另一个行动');
+      return seen.response;
+    });
+  }
+
+  function execute(req: Req, extra: ExecuteExtra = {}): ActionResponse {
+    const fingerprint = extra.fingerprint ?? fingerprintOf(req);
     const now = clock.now();
 
     // 幂等检查、结算、行动记录、审计与日志都在同一个事务里：失败整体回滚，且不占用幂等键
@@ -108,6 +128,7 @@ export function createActionService({ store, clock, rng }: ActionDeps) {
       status = advance(status, 'VALIDATING');
       status = advance(status, 'RESOLVING');
       const before = snapshot(tx);
+      extra.preCheck?.(tx);
       const resolved = resolveInTx(tx, req, now);
       status = advance(status, 'COMMITTED');
       status = advance(status, 'COMPLETED'); // 固定行动与突破的叙事为模板，随结算一并完成
@@ -121,6 +142,7 @@ export function createActionService({ store, clock, rng }: ActionDeps) {
         changes: resolved.changes,
         breakthrough: resolved.breakthrough,
         log: null,
+        ai: extra.ai ?? null,
         player,
       });
       const base = { id: actionId, kind: req.kind, idempotencyKey: req.idempotencyKey, fingerprint, status, createdAt: now };
@@ -128,7 +150,7 @@ export function createActionService({ store, clock, rng }: ActionDeps) {
       const diff = stateDiff(before, snapshot(tx));
       const log = tx.appendEvent({
         actionId,
-        eventType: req.kind === 'fixed' ? `action.${req.actionId}` : 'action.breakthrough',
+        eventType: extra.eventType ?? (req.kind === 'fixed' ? `action.${req.actionId}` : 'action.breakthrough'),
         before: diff?.before ?? null,
         after: diff?.after ?? null,
         at: now,
@@ -140,13 +162,18 @@ export function createActionService({ store, clock, rng }: ActionDeps) {
     });
   }
 
+  function submit(req: SubmitActionRequest): ActionResponse {
+    if (req.kind === 'free') throw new AppError('PRECONDITION_FAILED', '自由行动请通过自由行动入口提交');
+    return execute(req);
+  }
+
   function get(actionId: string): ActionResponse {
     const found = store.read((tx) => tx.getAction(actionId));
     if (!found) throw new AppError('NOT_FOUND', '行动不存在');
     return found.response;
   }
 
-  return { submit, get };
+  return { submit, execute, findReplay, get };
 }
 
 export type ActionService = ReturnType<typeof createActionService>;

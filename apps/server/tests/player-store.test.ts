@@ -116,7 +116,7 @@ describe.each(impls)('GameStore 契约：%s', (_name, make) => {
     fingerprint: 'fixed:rest',
     status: 'COMPLETED' as const,
     createdAt: 1,
-    response: { actionId: id, status: 'COMPLETED' as const, narrative: 'n', changes: [], breakthrough: null, log: null, player: tx.player() },
+    response: { actionId: id, status: 'COMPLETED' as const, narrative: 'n', changes: [], breakthrough: null, log: null, ai: null, player: tx.player() },
   });
   const logPayload = { type: 'system' as const, narrative: '日志', changes: [], breakthrough: null, idle: null, note: null };
 

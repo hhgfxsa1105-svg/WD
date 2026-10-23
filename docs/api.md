@@ -9,7 +9,7 @@
 | `GET /world/time` | 服务端时间、离线规则（阈值/上限/效率）、`clockBehindMs`（系统时间落后游戏时间的时长，正常为 0） |
 | `GET /player/state` | 当前角色 |
 | `GET /player/inventory` | 背包（名称、评级、数量；数量为 0 的不返回） |
-| `POST /actions` | 提交行动，必带 `idempotencyKey`。`kind`：`fixed`（`actionId`: `cultivate`/`rest`）、`breakthrough`（`pillItemId`: 突破丹药物品 ID 或 `null`）、`free`（暂未开放） |
+| `POST /actions` | 提交行动，必带 `idempotencyKey`。`kind`：`fixed`（`actionId`: `cultivate`/`rest`）、`breakthrough`（`pillItemId`: 突破丹药物品 ID 或 `null`）、`free`（`input`: 玩家原话，由 AI 解析，见 `docs/ai-contract.md`） |
 | `GET /actions/:id` | 查询已完成行动的结果 |
 | `GET /log?limit=` | 玩家可见日志（结构化记录，按时间正序；`limit` 1–200，默认 100）。刷新、重启后据此还原 |
 | `GET /audit/actions/:id` | 内部审计：行动及其审计事件（前后状态差异）。**仅本机访问**，其他来源 403 |
@@ -22,7 +22,13 @@
 `CultivationResponse`：`job`（进行中的任务或 null）、`player`、`changes`、`ticks`、`serverNow`、`offline`（按离线结算时有值：`gapMs`、`countedMs`、`capped`、`efficiencyPercent`；在线为 null）、`notice`。
 
 ## 行动结果
-`ActionResponse`：`actionId`、`status`、`narrative`、`changes`（数值变化）、`breakthrough`（仅突破：`outcome`、`chancePercent`、`roll`）、`log`（本次写入的日志记录，重试回放时与首次相同）、`player`（最新角色）。
+`ActionResponse`：`actionId`、`status`、`narrative`、`changes`（数值变化）、`breakthrough`（仅突破：`outcome`、`chancePercent`、`roll`）、`log`（本次写入的日志记录，重试回放时与首次相同）、`ai`（仅自由行动：`intent`、`actionType`、`executed`、`clarification`）、`player`（最新角色）。澄清与查看状态不产生行动记录，`GET /actions/:id` 查不到它们。
+
+## 自由行动的错误
+- `503 AI_UNAVAILABLE`：AI 未开启、额度用完、超时、限流、鉴权问题等；提示语不含内部细节。
+- `422 PRECONDITION_FAILED`：模型的意图合法，但服务端按当前状态判定不满足规则（体力不足、没有该丹药……）。
+- `409 CONFLICT`：同一幂等键用于了不同的输入。
+- `400 VALIDATION_FAILED`：输入为空白或超长。
 
 ## 突破的错误（均为 422 `PRECONDITION_FAILED`，状态与丹药不变）
 进度未满 · 冷却中（需隔一日）· 已是最高境界 · 丹药不足 · 该物品不能用于突破。
