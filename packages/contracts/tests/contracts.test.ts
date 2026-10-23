@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AuditEventSchema,
   ErrorResponseSchema,
   LIMITS,
+  LogRecordSchema,
   PlayerStateSchema,
   REALMS,
   SubmitActionRequestSchema,
@@ -127,5 +129,40 @@ describe('ErrorResponseSchema', () => {
     const ok = { code: 'VALIDATION_FAILED', message: 'x', request_id: 'r1' };
     expect(ErrorResponseSchema.safeParse(ok).success).toBe(true);
     expect(ErrorResponseSchema.safeParse({ ...ok, stack: 'at ...' }).success).toBe(false);
+  });
+});
+
+describe('LogRecordSchema / AuditEventSchema', () => {
+  const log = {
+    id: 1,
+    at: 1000,
+    type: 'breakthrough',
+    narrative: '突破',
+    changes: [{ stat: 'hp', delta: -20 }],
+    breakthrough: { outcome: 'failure', chancePercent: 70, roll: 90.5, pillName: null, realmFrom: 'body_tempering', realmTo: 'body_tempering' },
+    idle: null,
+    note: null,
+  };
+  it('接受合法日志记录', () => {
+    expect(LogRecordSchema.safeParse(log).success).toBe(true);
+  });
+  it.each([
+    ['序号为 0', { id: 0 }],
+    ['未知类型', { type: 'chat' }],
+    ['未知字段', { secret: 1 }],
+    ['成功率越界', { breakthrough: { ...log.breakthrough, chancePercent: 101 } }],
+    ['掷点为负', { breakthrough: { ...log.breakthrough, roll: -1 } }],
+    ['未知境界', { breakthrough: { ...log.breakthrough, realmTo: 'god' } }],
+    ['缺 note', { note: undefined }],
+  ])('拒绝日志：%s', (_n, patch) => {
+    expect(LogRecordSchema.safeParse({ ...log, ...patch }).success).toBe(false);
+  });
+
+  const ev = { seq: 1, id: 'e1', actorId: 'player_1', actionId: null, eventType: 'cultivation.start', before: null, after: { cultivation: 'running' }, at: 5 };
+  it('审计事件：合法与非法', () => {
+    expect(AuditEventSchema.safeParse(ev).success).toBe(true);
+    expect(AuditEventSchema.safeParse({ ...ev, eventType: '' }).success).toBe(false);
+    expect(AuditEventSchema.safeParse({ ...ev, extra: 1 }).success).toBe(false);
+    expect(AuditEventSchema.safeParse({ ...ev, seq: 0 }).success).toBe(false);
   });
 });

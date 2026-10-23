@@ -106,3 +106,60 @@ export const worldClock = sqliteTable(
   },
   (t) => [check('world_clock_nonneg', sql`${t.highWaterAt} >= 0`)],
 );
+
+/** 与 @jhz/contracts 的 ACTION_STATUSES / ACTION_KINDS 保持一致（测试校验） */
+export const DB_ACTION_STATUSES = ['RECEIVED', 'PARSING', 'VALIDATING', 'RESOLVING', 'COMMITTED', 'NARRATED', 'COMPLETED', 'FAILED'] as const;
+export const DB_ACTION_KINDS = ['fixed', 'breakthrough'] as const;
+const statusList = sql.raw(DB_ACTION_STATUSES.map((x) => `'${x}'`).join(', '));
+const kindList = sql.raw(DB_ACTION_KINDS.map((x) => `'${x}'`).join(', '));
+
+/** 行动记录：幂等键在同一玩家内唯一；重试时回放保存的首次结果 */
+export const actions = sqliteTable(
+  'actions',
+  {
+    id: text('id').primaryKey(),
+    playerId: text('player_id').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    kind: text('kind').notNull(),
+    /** 行动参数的指纹，用于识别「同一幂等键、不同参数」 */
+    fingerprint: text('fingerprint').notNull(),
+    status: text('status').notNull(),
+    responseJson: text('response_json').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    foreignKey({ columns: [t.playerId], foreignColumns: [players.id] }).onDelete('cascade'),
+    uniqueIndex('actions_player_key_unique').on(t.playerId, t.idempotencyKey),
+    check('actions_status_valid', sql`${t.status} in (${statusList})`),
+    check('actions_kind_valid', sql`${t.kind} in (${kindList})`),
+    check('actions_response_json_valid', sql`json_valid(${t.responseJson})`),
+    check('actions_key_length', sql`length(${t.idempotencyKey}) between 8 and 64`),
+  ],
+);
+
+/** 审计事件：关键状态变更的前后差异，同时承载玩家可见日志（log_json）。seq 单调递增，用于排序。 */
+export const auditEvents = sqliteTable(
+  'audit_events',
+  {
+    seq: integer('seq').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull(),
+    actorId: text('actor_id').notNull(),
+    actionId: text('action_id'),
+    eventType: text('event_type').notNull(),
+    beforeJson: text('before_json'),
+    afterJson: text('after_json'),
+    logJson: text('log_json'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.actorId], foreignColumns: [players.id] }).onDelete('cascade'),
+    foreignKey({ columns: [t.actionId], foreignColumns: [actions.id] }).onDelete('set null'),
+    uniqueIndex('audit_events_id_unique').on(t.id),
+    index('audit_events_action_idx').on(t.actionId),
+    check('audit_events_type_nonempty', sql`length(${t.eventType}) > 0`),
+    check('audit_events_before_json_valid', sql`${t.beforeJson} is null or json_valid(${t.beforeJson})`),
+    check('audit_events_after_json_valid', sql`${t.afterJson} is null or json_valid(${t.afterJson})`),
+    check('audit_events_log_json_valid', sql`${t.logJson} is null or json_valid(${t.logJson})`),
+  ],
+);

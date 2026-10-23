@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { CultivationResponseSchema, type CultivationResponse, type StateChange } from '@jhz/contracts';
 import { DEFAULT_METHOD_ID, IDLE_CULTIVATION, OFFLINE, settleIdleCultivation } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
+import { snapshot, stateDiff } from '../audit/diff.js';
 import type { Clock } from '../../shared/runtime.js';
-import type { CultivationJobRecord, GameStore, GameTx } from '../store/types.js';
+import type { CultivationJobRecord, GameStore, GameTx, LogPayload } from '../store/types.js';
 
 export interface OfflinePolicy {
   /** 距上次接触超过该时长视为离线 */
@@ -80,7 +81,7 @@ export function createCultivationService({ store, clock, offline }: CultivationD
     return { changes: result?.changes ?? [], ticks: result?.ticksUsed ?? 0, offline: info, notice: null };
   }
 
-  function respond(tx: GameTx, settled: Settled, now: number): CultivationResponse {
+  function respond(tx: GameTx, settled: Settled, now: number, log: CultivationResponse['log'] = null): CultivationResponse {
     const job = tx.runningJob();
     return CultivationResponseSchema.parse({
       job: job ? { methodId: job.methodId, status: job.status, startedAt: job.startedAt, lastSettledAt: job.lastSettledAt } : null,
@@ -90,6 +91,37 @@ export function createCultivationService({ store, clock, offline }: CultivationD
       serverNow: now,
       offline: settled.offline,
       notice: settled.notice,
+      log,
+    });
+  }
+
+  /** 把本次放置修炼的结算写成玩家可见日志的内容；没有可记录的内容时返回 null */
+  function logOf(s: Settled): LogPayload | null {
+    if (s.changes.length === 0 && !s.offline && !s.notice) return null;
+    const gained = s.changes.length > 0;
+    return {
+      type: gained ? 'idle' : s.offline ? 'idle' : 'system',
+      narrative: gained ? '你静坐吐纳，不觉时光流转。' : s.offline ? '你离开了一阵，回来时修炼仍在继续。' : '周身真气盈满，似乎触到了一道无形的关隘。',
+      changes: s.changes,
+      breakthrough: null,
+      idle: gained || s.offline ? { ticks: s.ticks, offline: s.offline } : null,
+      note: s.notice,
+    };
+  }
+
+  /**
+   * 在事务内执行一次放置修炼操作并写审计事件：
+   * 状态没有变化且没有可记录的日志时不写事件（例如每 30 秒的空结算），避免噪声。
+   */
+  function run(eventType: string, op: (tx: GameTx, now: number) => Settled): CultivationResponse {
+    const now = clock.now();
+    return store.transact((tx) => {
+      const before = snapshot(tx);
+      const settled = op(tx, now);
+      const diff = stateDiff(before, snapshot(tx));
+      const payload = logOf(settled);
+      const log = diff || payload ? tx.appendEvent({ actionId: null, eventType, before: diff?.before ?? null, after: diff?.after ?? null, at: now, log: payload }) : null;
+      return respond(tx, settled, now, log);
     });
   }
 
@@ -103,33 +135,26 @@ export function createCultivationService({ store, clock, offline }: CultivationD
     },
 
     /** 开始放置修炼；已在修炼时保持不变（幂等） */
-    start: (): CultivationResponse => {
-      const now = clock.now();
-      return store.transact((tx) => {
+    start: (): CultivationResponse =>
+      run('cultivation.start', (tx, now) => {
         if (!tx.runningJob()) {
           if (tx.player().realmProgress >= 100) throw new AppError('PRECONDITION_FAILED', '修炼已圆满，请先尝试突破');
           tx.saveJob({ id: randomUUID(), methodId: DEFAULT_METHOD_ID, status: 'running', startedAt: now, lastSettledAt: now, lastCheckedAt: now });
         }
-        return respond(tx, NONE, now);
-      });
-    },
+        return NONE;
+      }),
 
     /** 领取已累计的修炼收益；重复调用不会重复领取 */
-    settle: (): CultivationResponse => {
-      const now = clock.now();
-      return store.transact((tx) => respond(tx, settleInTx(tx, now), now));
-    },
+    settle: (): CultivationResponse => run('cultivation.settle', (tx, now) => settleInTx(tx, now)),
 
     /** 结算后停止；没有进行中的修炼时保持不变（幂等） */
-    stop: (): CultivationResponse => {
-      const now = clock.now();
-      return store.transact((tx) => {
+    stop: (): CultivationResponse =>
+      run('cultivation.stop', (tx, now) => {
         const settled = settleInTx(tx, now);
         const job = tx.runningJob();
         if (job) tx.saveJob({ ...job, status: 'stopped' });
-        return respond(tx, settled, now);
-      });
-    },
+        return settled;
+      }),
   };
 }
 

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { pillGradeOf } from '@jhz/game-rules';
 import type {
-  ActionResponse,
   CultivationJob,
   CultivationResponse,
   FixedActionId,
   InventoryItem,
+  LogRecord,
   PlayerState,
   WorldTimeResponse,
 } from '@jhz/contracts';
@@ -13,6 +13,7 @@ import {
   ApiError,
   fetchCultivation,
   fetchInventory,
+  fetchLog,
   fetchPlayerState,
   fetchWorldTime,
   settleCultivation,
@@ -22,10 +23,8 @@ import {
   submitFixedAction,
 } from './api/client';
 import { createKeyStore } from './api/idempotency';
-import { formatChanges, type LogChip } from './changes';
-import { GRADE_LABEL, REALM_LABEL } from './labels';
-import { INITIAL_LOG, hourLabel, type LogEntry } from './log';
-import { offlineSummary } from './offline';
+import { GRADE_LABEL } from './labels';
+import { WELCOME, mergeEntries, toLogEntries, type LogEntry } from './log';
 
 const AUTO_SETTLE_MS = 30_000;
 const messageOf = (e: unknown): string => (e instanceof ApiError ? e.message : '发生未知错误，请重试');
@@ -37,7 +36,7 @@ export function useGame() {
   const [serverOffset, setServerOffset] = useState(0);
   const [world, setWorld] = useState<WorldTimeResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [log, setLog] = useState<LogEntry[]>(INITIAL_LOG);
+  const [log, setLog] = useState<LogEntry[]>([WELCOME]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -45,8 +44,9 @@ export function useGame() {
   const busyRef = useRef(false);
   const keys = useRef(createKeyStore());
 
-  const append = useCallback((entry: Omit<LogEntry, 'id' | 'time'>) => {
-    setLog((l) => [...l, { ...entry, id: l.length, time: hourLabel(l.length) }]);
+  /** 追加服务端写入的日志记录；按序号去重，幂等重试回放同一条记录时不会重复显示 */
+  const appendRecord = useCallback((record: LogRecord | null) => {
+    if (record) setLog((l) => mergeEntries(l, toLogEntries(record)));
   }, []);
 
   const applyCultivation = useCallback(
@@ -54,21 +54,10 @@ export function useGame() {
       setPlayer(r.player);
       setJob(r.job);
       setServerOffset(r.serverNow - Date.now());
-      const offline = r.offline ? offlineSummary(r.offline) : null;
-      if (r.changes.length > 0) {
-        append({
-          text: '你静坐吐纳，不觉时光流转。',
-          chips: formatChanges(r.changes),
-          sub: [`放置修炼 · 结算 ${r.ticks} 分钟`, offline].filter(Boolean).join(' · '),
-        });
-      } else if (offline) {
-        append({ text: '你离开了一阵，回来时修炼仍在继续。', chips: [], sub: `${offline} · 收益不足 1% 经验` });
-      } else if (!quiet) {
-        setNotice('暂无可领取的收益');
-      }
-      if (r.notice) append({ text: '周身真气盈满，似乎触到了一道无形的关隘。', chips: [], sub: r.notice, system: true });
+      appendRecord(r.log);
+      if (!r.log && !quiet) setNotice('暂无可领取的收益');
     },
-    [append],
+    [appendRecord],
   );
 
   /** 串行执行一次操作：忙碌期间忽略重复点击；统一错误提示 */
@@ -91,9 +80,10 @@ export function useGame() {
 
   const load = useCallback(() => {
     setLoadError(null);
-    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation(), fetchWorldTime().catch(() => null)]).then(
-      async ([p, inv, c, w]) => {
+    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation(), fetchWorldTime().catch(() => null), fetchLog().catch(() => [] as LogRecord[])]).then(
+      async ([p, inv, c, w, history]) => {
         setWorld(w);
+        setLog(mergeEntries([WELCOME], history.flatMap(toLogEntries)));
         setPlayer(p);
         setInventory(inv);
         setJob(c.job);
@@ -133,7 +123,7 @@ export function useGame() {
         const r = await submitFixedAction(actionId, keys.current.keyFor(fp));
         keys.current.clear(fp);
         setPlayer(r.player);
-        append({ text: r.narrative ?? '（叙事暂不可用）', chips: formatChanges(r.changes) });
+        appendRecord(r.log);
       } catch (e) {
         if (!(e instanceof ApiError && e.code === 'NETWORK')) keys.current.clear(fp); // 网络失败时保留键，重试不会重复结算
         throw e;
@@ -147,10 +137,9 @@ export function useGame() {
   /** 返回 true 表示请求已被服务端处理（成功或失败的突破都算），弹窗可以关闭 */
   const breakthrough = async (pillItemId: string | null): Promise<boolean> => {
     let handled = false;
-    const before = player;
     await guarded(async () => {
       const fp = `breakthrough:${pillItemId ?? ''}`;
-      let r: ActionResponse;
+      let r: Awaited<ReturnType<typeof submitBreakthrough>>;
       try {
         r = await submitBreakthrough(pillItemId, keys.current.keyFor(fp));
       } catch (e) {
@@ -160,20 +149,7 @@ export function useGame() {
       keys.current.clear(fp);
       handled = true;
       setPlayer(r.player);
-      const b = r.breakthrough!;
-      const pill = pillItemId ? inventory.find((i) => i.itemId === pillItemId) : undefined;
-      const sub = [
-        `成功率 ${b.chancePercent}% · 掷点 ${b.roll.toFixed(2)}`,
-        pill ? `消耗${pill.name} ×1` : null,
-        b.outcome === 'failure' ? '冷却 24 小时' : null,
-      ]
-        .filter(Boolean)
-        .join(' · ');
-      const chips: LogChip[] = formatChanges(r.changes.filter((c) => !(b.outcome === 'success' && c.stat === 'realmProgress')));
-      if (b.outcome === 'success' && before) {
-        chips.unshift({ text: `境界 ${REALM_LABEL[before.realm]}→${REALM_LABEL[r.player.realm]}`, tone: 'up' });
-      }
-      append({ text: r.narrative ?? '', chips, sub });
+      appendRecord(r.log);
       if (pillItemId) setInventory(await fetchInventory().catch(() => inventory));
     });
     return handled;

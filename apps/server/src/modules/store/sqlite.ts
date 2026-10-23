@@ -1,10 +1,19 @@
-import { and, eq } from 'drizzle-orm';
-import { PlayerStateSchema, type Honorific, type PlayerState } from '@jhz/contracts';
+import { randomUUID } from 'node:crypto';
+import { and, asc, desc, eq, isNotNull } from 'drizzle-orm';
+import {
+  ActionResponseSchema,
+  LogRecordSchema,
+  PlayerStateSchema,
+  type AuditEvent,
+  type Honorific,
+  type LogRecord,
+  type PlayerState,
+} from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import type { Db } from '../../db/connection.js';
-import { cultivationJobs, inventory, playerStates, players, worldClock } from '../../db/schema.js';
+import { actions, auditEvents, cultivationJobs, inventory, playerStates, players, worldClock } from '../../db/schema.js';
 import { AppError } from '../../shared/errors.js';
-import type { CultivationJobRecord, GameStore, GameTx } from './types.js';
+import type { CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 /** 单机固定的玩家 ID */
 export const PLAYER_ID = 'player_1';
@@ -141,6 +150,94 @@ function makeTx(db: Executor): GameTx {
         .onConflictDoUpdate({ target: cultivationJobs.id, set: { status: job.status, lastSettledAt: job.lastSettledAt, lastCheckedAt: job.lastCheckedAt, updatedAt: Date.now() } })
         .run();
     },
+
+    findActionByKey(key) {
+      const r = db.select().from(actions).where(and(eq(actions.playerId, PLAYER_ID), eq(actions.idempotencyKey, key))).get();
+      return r ? rowToAction(r) : null;
+    },
+    getAction(id) {
+      const r = db.select().from(actions).where(and(eq(actions.playerId, PLAYER_ID), eq(actions.id, id))).get();
+      return r ? rowToAction(r) : null;
+    },
+    saveAction(a: StoredAction) {
+      const values = {
+        id: a.id,
+        playerId: PLAYER_ID,
+        idempotencyKey: a.idempotencyKey,
+        kind: a.kind,
+        fingerprint: a.fingerprint,
+        status: a.status,
+        responseJson: JSON.stringify(a.response),
+        createdAt: a.createdAt,
+      };
+      db.insert(actions)
+        .values(values)
+        .onConflictDoUpdate({ target: actions.id, set: { status: a.status, responseJson: values.responseJson, updatedAt: Date.now() } })
+        .run();
+    },
+    appendEvent(input) {
+      const row = db
+        .insert(auditEvents)
+        .values({
+          id: randomUUID(),
+          actorId: PLAYER_ID,
+          actionId: input.actionId,
+          eventType: input.eventType,
+          beforeJson: input.before ? JSON.stringify(input.before) : null,
+          afterJson: input.after ? JSON.stringify(input.after) : null,
+          logJson: null,
+          createdAt: input.at,
+        })
+        .returning({ seq: auditEvents.seq })
+        .get();
+      if (!input.log) return null;
+      const log = LogRecordSchema.parse({ ...input.log, id: row.seq, at: input.at });
+      db.update(auditEvents).set({ logJson: JSON.stringify(log) }).where(eq(auditEvents.seq, row.seq)).run();
+      return log;
+    },
+    recentLog(limit) {
+      const rows = db
+        .select({ logJson: auditEvents.logJson })
+        .from(auditEvents)
+        .where(and(eq(auditEvents.actorId, PLAYER_ID), isNotNull(auditEvents.logJson)))
+        .orderBy(desc(auditEvents.seq))
+        .limit(limit)
+        .all();
+      return rows.reverse().map((r) => LogRecordSchema.parse(JSON.parse(r.logJson!)));
+    },
+    eventsForAction(actionId) {
+      return db
+        .select()
+        .from(auditEvents)
+        .where(eq(auditEvents.actionId, actionId))
+        .orderBy(asc(auditEvents.seq))
+        .all()
+        .map(
+          (r): AuditEvent => ({
+            seq: r.seq,
+            id: r.id,
+            actorId: r.actorId,
+            actionId: r.actionId,
+            eventType: r.eventType,
+            before: r.beforeJson ? JSON.parse(r.beforeJson) : null,
+            after: r.afterJson ? JSON.parse(r.afterJson) : null,
+            at: r.createdAt,
+          }),
+        );
+    },
+  };
+}
+
+function rowToAction(r: typeof actions.$inferSelect): StoredAction {
+  return {
+    id: r.id,
+    kind: r.kind as StoredAction['kind'],
+    idempotencyKey: r.idempotencyKey,
+    fingerprint: r.fingerprint,
+    status: r.status as StoredAction['status'],
+    // 读出时同样校验，损坏的记录不会被当作「首次结果」回放
+    response: ActionResponseSchema.parse(JSON.parse(r.responseJson)),
+    createdAt: r.createdAt,
   };
 }
 

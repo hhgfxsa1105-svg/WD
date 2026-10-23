@@ -1,18 +1,25 @@
-import { PlayerStateSchema, type PlayerState } from '@jhz/contracts';
+import { randomUUID } from 'node:crypto';
+import { LogRecordSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type PlayerState } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
-import type { CultivationJobRecord, GameStore, GameTx } from './types.js';
+import type { CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 interface State {
   player: PlayerState;
   items: Map<string, number>;
   jobs: Map<string, CultivationJobRecord>;
+  actions: Map<string, StoredAction>;
+  events: (AuditEvent & { log: LogRecord | null })[];
+  seq: number;
 }
 
 const cloneState = (s: State): State => ({
   player: structuredClone(s.player),
   items: new Map(s.items),
   jobs: new Map([...s.jobs].map(([k, v]) => [k, { ...v }])),
+  actions: new Map([...s.actions].map(([k, v]) => [k, structuredClone(v)])),
+  events: structuredClone(s.events),
+  seq: s.seq,
 });
 
 function makeTx(s: State): GameTx {
@@ -48,6 +55,41 @@ function makeTx(s: State): GameTx {
       }
       s.jobs.set(job.id, { ...job });
     },
+    findActionByKey: (key) => {
+      const a = [...s.actions.values()].find((x) => x.idempotencyKey === key);
+      return a ? structuredClone(a) : null;
+    },
+    getAction: (id) => {
+      const a = s.actions.get(id);
+      return a ? structuredClone(a) : null;
+    },
+    saveAction(action) {
+      const dup = [...s.actions.values()].find((x) => x.idempotencyKey === action.idempotencyKey && x.id !== action.id);
+      if (dup) throw new AppError('CONFLICT', '幂等键已被使用');
+      s.actions.set(action.id, structuredClone(action));
+    },
+    appendEvent(input) {
+      const seq = ++s.seq;
+      const log = input.log ? LogRecordSchema.parse({ ...input.log, id: seq, at: input.at }) : null;
+      s.events.push({
+        seq,
+        id: randomUUID(),
+        actorId: 'player_1',
+        actionId: input.actionId,
+        eventType: input.eventType,
+        before: input.before,
+        after: input.after,
+        at: input.at,
+        log,
+      });
+      return log ? structuredClone(log) : null;
+    },
+    recentLog: (limit) =>
+      structuredClone(s.events.flatMap((e) => (e.log ? [e.log] : [])).slice(-limit)),
+    eventsForAction: (actionId) =>
+      s.events
+        .filter((e) => e.actionId === actionId)
+        .map(({ log: _log, ...e }) => structuredClone(e)),
   };
 }
 
@@ -57,6 +99,9 @@ export function createMemoryGameStore(initial: PlayerState = createInitialPlayer
     player: PlayerStateSchema.parse(initial),
     items: new Map(INITIAL_INVENTORY.map((i) => [i.itemId, i.quantity])),
     jobs: new Map(),
+    actions: new Map(),
+    events: [],
+    seq: 0,
   };
   return {
     worldClock: {

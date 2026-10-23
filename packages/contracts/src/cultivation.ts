@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CultivationStatusSchema } from './enums.js';
 import { StateChangeSchema } from './action.js';
+import { LogRecordSchema } from './log.js';
 import { PlayerStateSchema } from './player.js';
 
 export const CultivationJobSchema = z
@@ -38,6 +39,8 @@ export const CultivationResponseSchema = z
       .strict()
       .nullable(),
     notice: z.string().max(200).nullable(),
+    /** 本次结算写入的日志记录；没有可记录内容时为 null */
+    log: LogRecordSchema.nullable(),
   })
   .strict();
 export type CultivationResponse = z.infer<typeof CultivationResponseSchema>;

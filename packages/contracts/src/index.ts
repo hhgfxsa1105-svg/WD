@@ -6,6 +6,8 @@ export * from './player.js';
 export * from './action.js';
 export * from './inventory.js';
 export * from './cultivation.js';
+export * from './log.js';
+export * from './audit.js';
 export * from './world.js';
 export * from './error.js';
 

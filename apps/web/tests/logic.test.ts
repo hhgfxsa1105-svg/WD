@@ -108,3 +108,84 @@ describe('离线说明', () => {
     expect(offlineRuleText(12 * 3_600_000, 50)).toBe('离线最多计入 12 小时，按 50% 效率');
   });
 });
+
+import type { LogRecord } from '@jhz/contracts';
+import { formatChanges } from '../src/changes';
+import { WELCOME, mergeEntries, toLogEntries } from '../src/log';
+
+const rec = (over: Partial<LogRecord>): LogRecord => ({
+  id: 3,
+  at: 1,
+  type: 'fixed',
+  narrative: '叙事',
+  changes: [],
+  breakthrough: null,
+  idle: null,
+  note: null,
+  ...over,
+});
+
+describe('formatChanges 容错', () => {
+  it('忽略未知项目与 0', () => {
+    expect(formatChanges([{ stat: 'mystery', delta: 5 }, { stat: 'hp', delta: 0 }, { stat: 'hp', delta: -3 }])).toEqual([{ text: '气血 −3', tone: 'down' }]);
+  });
+});
+
+describe('toLogEntries：把服务端记录渲染为界面条目', () => {
+  it('固定行动：叙事 + 数值标签', () => {
+    const [e] = toLogEntries(rec({ changes: [{ stat: 'stamina', delta: -10 }] }));
+    expect(e).toMatchObject({ key: '3', seq: 3, text: '叙事', chips: [{ text: '体力 −10', tone: 'down' }] });
+  });
+
+  it('突破成功：境界标签替代「经验 −100%」，小字含成功率、掷点、丹药', () => {
+    const [e] = toLogEntries(
+      rec({
+        type: 'breakthrough',
+        changes: [{ stat: 'realmProgress', delta: -100 }, { stat: 'maxHp', delta: 30 }],
+        breakthrough: { outcome: 'success', chancePercent: 80, roll: 12.3, pillName: '凡阶突破丹', realmFrom: 'body_tempering', realmTo: 'opening' },
+      }),
+    );
+    expect(e!.chips.map((c) => c.text)).toEqual(['境界 炼体→通窍', '气血上限 +30']);
+    expect(e!.sub).toBe('成功率 80% · 掷点 12.30 · 消耗凡阶突破丹 ×1');
+  });
+
+  it('突破失败：保留经验回落，注明冷却', () => {
+    const [e] = toLogEntries(
+      rec({
+        type: 'breakthrough',
+        changes: [{ stat: 'realmProgress', delta: -20 }, { stat: 'hp', delta: -20 }],
+        breakthrough: { outcome: 'failure', chancePercent: 70, roll: 90, pillName: null, realmFrom: 'body_tempering', realmTo: 'body_tempering' },
+      }),
+    );
+    expect(e!.chips.map((c) => c.text)).toEqual(['经验 −20%', '气血 −20']);
+    expect(e!.sub).toBe('成功率 70% · 掷点 90.00 · 冷却 24 小时');
+  });
+
+  it('放置修炼：有收益显示结算分钟与离线说明；无收益的离线单独说明', () => {
+    const off = { gapMs: 7_200_000, countedMs: 7_200_000, capped: false, efficiencyPercent: 50 };
+    const [a] = toLogEntries(rec({ type: 'idle', changes: [{ stat: 'realmProgress', delta: 12 }], idle: { ticks: 115, offline: off } }));
+    expect(a!.sub).toBe('放置修炼 · 结算 115 分钟 · 离线 2 小时，计入 2 小时（效率 50%）');
+    const [b] = toLogEntries(rec({ type: 'idle', narrative: '你离开了一阵', idle: { ticks: 0, offline: off } }));
+    expect(b!.sub).toBe('离线 2 小时，计入 2 小时（效率 50%） · 收益不足 1% 经验');
+  });
+
+  it('修炼圆满：派生出附加的系统条目，键唯一', () => {
+    const es = toLogEntries(rec({ id: 9, type: 'idle', changes: [{ stat: 'realmProgress', delta: 1 }], idle: { ticks: 5, offline: null }, note: '修炼已圆满，可以尝试突破了' }));
+    expect(es).toHaveLength(2);
+    expect(es[1]).toMatchObject({ key: '9-note', system: true, sub: '修炼已圆满，可以尝试突破了' });
+    expect(new Set(es.map((e) => e.key)).size).toBe(2);
+  });
+});
+
+describe('mergeEntries', () => {
+  it('按 key 去重（幂等回放不重复显示），并保持序号顺序', () => {
+    const a = toLogEntries(rec({ id: 2 }));
+    const b = toLogEntries(rec({ id: 5 }));
+    let list = mergeEntries([WELCOME], [...b, ...a]);
+    expect(list.map((e) => e.seq)).toEqual([0, 2, 5]);
+    const same = mergeEntries(list, a);
+    expect(same).toBe(list); // 没有新条目时返回原数组
+    list = mergeEntries(list, toLogEntries(rec({ id: 4 })));
+    expect(list.map((e) => e.seq)).toEqual([0, 2, 4, 5]);
+  });
+});

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ActionStatusSchema, ChangeStatSchema, FixedActionIdSchema } from './enums.js';
 import { ItemIdSchema } from './inventory.js';
+import { LogRecordSchema } from './log.js';
 import { PlayerStateSchema } from './player.js';
 import { LIMITS } from './limits.js';
 
@@ -52,6 +53,8 @@ export const ActionResponseSchema = z
       })
       .strict()
       .nullable(),
+    /** 本次行动写入的日志记录（重试回放时与首次相同） */
+    log: LogRecordSchema.nullable(),
     player: PlayerStateSchema,
   })
   .strict();

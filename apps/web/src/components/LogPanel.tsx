@@ -16,7 +16,7 @@ export function LogPanel({ entries }: { entries: LogEntry[] }) {
       </div>
       <ol className="log" ref={list} aria-live="polite">
         {entries.map((e) => (
-          <li className={e.system ? 'entry system' : 'entry'} key={e.id}>
+          <li className={e.system ? 'entry system' : 'entry'} key={e.key}>
             <time>{e.time}</time>
             <div>
               <p>{e.text}</p>

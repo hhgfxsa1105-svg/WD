@@ -109,6 +109,58 @@ describe.each(impls)('GameStore 契约：%s', (_name, make) => {
     expect(() => s.transact((tx) => tx.saveJob(job('j2')))).not.toThrow();
   });
 
+  const stored = (tx: Parameters<Parameters<GameStore['read']>[0]>[0], id: string, key: string) => ({
+    id,
+    kind: 'fixed' as const,
+    idempotencyKey: key,
+    fingerprint: 'fixed:rest',
+    status: 'COMPLETED' as const,
+    createdAt: 1,
+    response: { actionId: id, status: 'COMPLETED' as const, narrative: 'n', changes: [], breakthrough: null, log: null, player: tx.player() },
+  });
+  const logPayload = { type: 'system' as const, narrative: '日志', changes: [], breakthrough: null, idle: null, note: null };
+
+  it('行动记录：按幂等键与 ID 查询；同一幂等键不能用于另一个行动；同 ID 可更新', () => {
+    const s = make();
+    expect(s.read((tx) => tx.findActionByKey('idem-key-0001'))).toBeNull();
+    s.transact((tx) => tx.saveAction(stored(tx, 'a1', 'idem-key-0001')));
+    expect(s.read((tx) => tx.findActionByKey('idem-key-0001'))).toMatchObject({ id: 'a1', fingerprint: 'fixed:rest' });
+    expect(s.read((tx) => tx.getAction('a1'))?.idempotencyKey).toBe('idem-key-0001');
+    expect(s.read((tx) => tx.getAction('nope'))).toBeNull();
+    expect(() => s.transact((tx) => tx.saveAction(stored(tx, 'a2', 'idem-key-0001')))).toThrow();
+    s.transact((tx) => tx.saveAction({ ...stored(tx, 'a1', 'idem-key-0001'), response: { ...stored(tx, 'a1', 'idem-key-0001').response, narrative: '更新' } }));
+    expect(s.read((tx) => tx.getAction('a1'))?.response.narrative).toBe('更新');
+  });
+
+  it('审计与日志：序号递增、只有带日志的事件进入日志、按时间正序、limit 取最近', () => {
+    const s = make();
+    s.transact((tx) => tx.saveAction(stored(tx, 'a1', 'idem-key-0001')));
+    const r1 = s.transact((tx) => tx.appendEvent({ actionId: 'a1', eventType: 't.one', before: { x: 1 }, after: { x: 2 }, at: 10, log: { ...logPayload, narrative: '一' } }));
+    const none = s.transact((tx) => tx.appendEvent({ actionId: 'a1', eventType: 't.nolog', before: null, after: null, at: 11, log: null }));
+    const r3 = s.transact((tx) => tx.appendEvent({ actionId: null, eventType: 't.three', before: null, after: { y: 1 }, at: 12, log: { ...logPayload, narrative: '三' } }));
+    expect(none).toBeNull();
+    expect(r1!.id).toBeLessThan(r3!.id);
+    expect(r1).toMatchObject({ at: 10, narrative: '一' });
+    expect(s.read((tx) => tx.recentLog(10)).map((e) => e.narrative)).toEqual(['一', '三']);
+    expect(s.read((tx) => tx.recentLog(1)).map((e) => e.narrative)).toEqual(['三']);
+    const evs = s.read((tx) => tx.eventsForAction('a1'));
+    expect(evs.map((e) => e.eventType)).toEqual(['t.one', 't.nolog']);
+    expect(evs[0]).toMatchObject({ before: { x: 1 }, after: { x: 2 }, at: 10, actionId: 'a1' });
+  });
+
+  it('事务回滚连同行动、审计、日志一起撤销', () => {
+    const s = make();
+    expect(() =>
+      s.transact((tx) => {
+        tx.saveAction(stored(tx, 'a1', 'idem-key-0001'));
+        tx.appendEvent({ actionId: 'a1', eventType: 'x', before: null, after: null, at: 1, log: logPayload });
+        throw new Error('boom');
+      }),
+    ).toThrow('boom');
+    expect(s.read((tx) => tx.findActionByKey('idem-key-0001'))).toBeNull();
+    expect(s.read((tx) => tx.recentLog(10))).toEqual([]);
+  });
+
   it('可保存后天境界与内力', () => {
     const s = make();
     const saved = s.transact((tx) => tx.savePlayer({ ...tx.player(), realm: 'houtian', neili: { current: 6, max: 60 } }));

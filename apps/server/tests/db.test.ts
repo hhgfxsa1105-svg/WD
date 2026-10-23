@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { describe, expect, it } from 'vitest';
-import { REALMS } from '@jhz/contracts';
+import { ACTION_KINDS, ACTION_STATUSES, REALMS } from '@jhz/contracts';
 import { MIGRATIONS_DIR, openDatabase } from '../src/db/connection.js';
 import { runMigrations } from '../src/db/migrate.js';
-import { DB_REALMS } from '../src/db/schema.js';
+import { DB_ACTION_KINDS, DB_ACTION_STATUSES, DB_REALMS } from '../src/db/schema.js';
 
 const fresh = () => {
   const d = openDatabase(':memory:');
@@ -197,5 +197,68 @@ describe('离线与世界时钟的数据结构', () => {
     d.sqlite.prepare("insert into world_clock (id, high_water_at) values ('main', 5)").run();
     expect(() => d.sqlite.prepare("insert into world_clock (id, high_water_at) values ('main', 6)").run()).toThrow(/UNIQUE|PRIMARY/);
     expect(() => d.sqlite.prepare("insert into world_clock (id, high_water_at) values ('x', -1)").run()).toThrow(/CHECK/);
+  });
+});
+
+describe('行动与审计表约束', () => {
+  const d0 = () => {
+    const d = fresh();
+    insertPlayer(d);
+    return d;
+  };
+  const addAction = (d: ReturnType<typeof fresh>, id: string, key: string, over: Record<string, unknown> = {}) => {
+    const row = { id, player_id: 'p1', idempotency_key: key, kind: 'fixed', fingerprint: 'f', status: 'COMPLETED', response_json: '{}', created_at: 1, ...over };
+    const cols = Object.keys(row);
+    return d.sqlite.prepare(`insert into actions (${cols.join(',')}) values (${cols.map((c) => '@' + c).join(',')})`).run(row);
+  };
+  const addEvent = (d: ReturnType<typeof fresh>, over: Record<string, unknown> = {}) => {
+    const row = { id: crypto.randomUUID(), actor_id: 'p1', action_id: null, event_type: 'x', before_json: null, after_json: null, log_json: null, created_at: 1, ...over };
+    const cols = Object.keys(row);
+    return d.sqlite.prepare(`insert into audit_events (${cols.join(',')}) values (${cols.map((c) => '@' + c).join(',')})`).run(row);
+  };
+
+  it('schema 内联的状态与种类与契约一致', () => {
+    expect([...DB_ACTION_STATUSES]).toEqual([...ACTION_STATUSES]);
+    expect([...DB_ACTION_KINDS]).toEqual([...ACTION_KINDS]);
+  });
+
+  it('幂等键在同一玩家内唯一，长度 8–64', () => {
+    const d = d0();
+    expect(() => addAction(d, 'a1', 'idem-key-0001')).not.toThrow();
+    expect(() => addAction(d, 'a2', 'idem-key-0001')).toThrow(/UNIQUE/);
+    expect(() => addAction(d, 'a3', 'short')).toThrow(/CHECK/);
+    expect(() => addAction(d, 'a4', 'x'.repeat(65))).toThrow(/CHECK/);
+  });
+
+  it.each([
+    ['状态非法', { status: 'DONE' }],
+    ['种类非法', { kind: 'free' }],
+    ['响应不是合法 JSON', { response_json: 'not json' }],
+  ])('行动表拒绝：%s', (_n, over) => {
+    const d = d0();
+    expect(() => addAction(d, 'a1', 'idem-key-0001', over)).toThrow(/CHECK/);
+  });
+
+  it('审计事件：类型非空、JSON 合法、外键、id 唯一；seq 单调递增', () => {
+    const d = d0();
+    expect(() => addEvent(d, { event_type: '' })).toThrow(/CHECK/);
+    expect(() => addEvent(d, { before_json: '{bad' })).toThrow(/CHECK/);
+    expect(() => addEvent(d, { log_json: 'nope' })).toThrow(/CHECK/);
+    expect(() => addEvent(d, { actor_id: 'ghost' })).toThrow(/FOREIGN KEY/);
+    expect(() => addEvent(d, { action_id: 'ghost' })).toThrow(/FOREIGN KEY/);
+    expect(() => addEvent(d, { id: 'dup' })).not.toThrow();
+    expect(() => addEvent(d, { id: 'dup' })).toThrow(/UNIQUE/);
+    const seqs = (d.sqlite.prepare('select seq from audit_events order by seq').all() as { seq: number }[]).map((r) => r.seq);
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+  });
+
+  it('删除行动后，审计事件保留且 action_id 置空；删除玩家则级联删除', () => {
+    const d = d0();
+    addAction(d, 'a1', 'idem-key-0001');
+    addEvent(d, { action_id: 'a1' });
+    d.sqlite.prepare("delete from actions where id='a1'").run();
+    expect(d.sqlite.prepare('select action_id from audit_events').get()).toEqual({ action_id: null });
+    d.sqlite.prepare("delete from players where id='p1'").run();
+    expect((d.sqlite.prepare('select count(*) c from audit_events').get() as { c: number }).c).toBe(0);
   });
 });

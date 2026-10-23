@@ -41,6 +41,12 @@ export const CULTIVATION_STATUSES = ['running', 'stopped'] as const;
 export const CultivationStatusSchema = z.enum(CULTIVATION_STATUSES);
 export type CultivationStatus = z.infer<typeof CultivationStatusSchema>;
 
+export const ACTION_KINDS = ['fixed', 'breakthrough'] as const;
+
+export const LOG_TYPES = ['fixed', 'breakthrough', 'idle', 'system'] as const;
+export const LogTypeSchema = z.enum(LOG_TYPES);
+export type LogType = z.infer<typeof LogTypeSchema>;
+
 export const FIXED_ACTION_IDS = ['cultivate', 'rest'] as const;
 export const FixedActionIdSchema = z.enum(FIXED_ACTION_IDS);
 export type FixedActionId = z.infer<typeof FixedActionIdSchema>;
@@ -62,6 +68,7 @@ export type ActionStatus = z.infer<typeof ActionStatusSchema>;
 export const ERROR_CODES = [
   'VALIDATION_FAILED',
   'NOT_FOUND',
+  'FORBIDDEN',
   'CONFLICT',
   'PRECONDITION_FAILED',
   'INTERNAL_ERROR',

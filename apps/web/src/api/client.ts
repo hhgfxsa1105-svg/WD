@@ -3,12 +3,14 @@ import {
   CultivationResponseSchema,
   ErrorResponseSchema,
   InventoryResponseSchema,
+  LogResponseSchema,
   PlayerStateSchema,
   WorldTimeResponseSchema,
   type ActionResponse,
   type CultivationResponse,
   type FixedActionId,
   type InventoryItem,
+  type LogRecord,
   type PlayerState,
   type SubmitActionRequest,
   type WorldTimeResponse,
@@ -76,3 +78,5 @@ export const settleCultivation = (): Promise<CultivationResponse> => postJson('/
 export const stopCultivation = (): Promise<CultivationResponse> => postJson('/api/v1/cultivation/stop', CultivationResponseSchema);
 
 export const fetchWorldTime = (): Promise<WorldTimeResponse> => request('/api/v1/world/time', WorldTimeResponseSchema);
+
+export const fetchLog = async (limit = 100): Promise<LogRecord[]> => (await request(`/api/v1/log?limit=${limit}`, LogResponseSchema)).entries;

@@ -1,6 +1,14 @@
 import type { FastifyInstance } from 'fastify';
-import { InventoryResponseSchema, PlayerStateSchema, SubmitActionRequestSchema, WorldTimeResponseSchema } from '@jhz/contracts';
-import { parseWith } from '../shared/errors.js';
+import {
+  AuditActionResponseSchema,
+  InventoryResponseSchema,
+  LogResponseSchema,
+  PlayerStateSchema,
+  SubmitActionRequestSchema,
+  WorldTimeResponseSchema,
+} from '@jhz/contracts';
+import { z } from 'zod';
+import { AppError, parseWith } from '../shared/errors.js';
 import type { ActionService } from './action/service.js';
 import type { CultivationService } from './cultivation/service.js';
 import type { GameStore } from './store/types.js';
@@ -14,6 +22,8 @@ interface Deps {
   /** 系统时间落后于世界时间的时长（仅 WorldClock 提供），正常为 0 */
   clockBehindMs: () => number;
 }
+
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 export function registerGameRoutes(app: FastifyInstance, { store, actions, cultivation, clock, clockBehindMs }: Deps) {
   app.get('/api/v1/world/time', async () =>
@@ -33,6 +43,24 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
 
   app.post('/api/v1/actions', async (req) => actions.submit(parseWith(SubmitActionRequestSchema, req.body)));
   app.get<{ Params: { id: string } }>('/api/v1/actions/:id', async (req) => actions.get(req.params.id));
+
+  app.get('/api/v1/log', async (req) => {
+    const { limit } = parseWith(z.object({ limit: z.coerce.number().int().min(1).max(200).default(100) }).strict(), req.query);
+    return LogResponseSchema.parse({ entries: store.read((tx) => tx.recentLog(limit)) });
+  });
+
+  // 内部审计查询：仅本机访问（服务本就只监听 127.0.0.1，这里再显式校验一次）
+  app.get<{ Params: { id: string } }>('/api/v1/audit/actions/:id', async (req) => {
+    if (!LOOPBACK.has(req.ip)) throw new AppError('FORBIDDEN', '仅允许本机访问');
+    return store.read((tx) => {
+      const action = tx.getAction(req.params.id);
+      if (!action) throw new AppError('NOT_FOUND', '行动不存在');
+      return AuditActionResponseSchema.parse({
+        action: { id: action.id, kind: action.kind, status: action.status, idempotencyKey: action.idempotencyKey, createdAt: action.createdAt },
+        events: tx.eventsForAction(action.id),
+      });
+    });
+  });
 
   app.get('/api/v1/cultivation', async () => cultivation.get());
   app.post('/api/v1/cultivation/start', async () => cultivation.start());
