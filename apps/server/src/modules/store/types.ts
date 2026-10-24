@@ -1,4 +1,4 @@
-import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LogRecord, NpcMemory, NpcState, PlayerState, Relationship } from '@jhz/contracts';
+import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LogRecord, NpcMemory, NpcState, PlayerState, QuestState, QuestStatus, Relationship } from '@jhz/contracts';
 import type { MemoryEventKind, NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
 
 export interface CultivationJobRecord {
@@ -16,7 +16,7 @@ export interface CultivationJobRecord {
 /** 已落库的行动：幂等键唯一，重试时回放 response */
 export interface StoredAction {
   id: string;
-  kind: 'fixed' | 'breakthrough';
+  kind: 'fixed' | 'breakthrough' | 'move' | 'quest';
   idempotencyKey: string;
   /** 行动参数的指纹，用于识别「同一幂等键、不同参数」 */
   fingerprint: string;
@@ -62,6 +62,13 @@ export interface GameTx {
   /** 移动 NPC；NPC 或地点不存在抛 NOT_FOUND */
   moveNpc(npcId: string, locationId: string): NpcState;
   setNpcStatus(npcId: string, status: NpcStatus): NpcState;
+
+  /** 全部任务的可变状态（名字、步骤、奖励来自静态定义） */
+  quests(): QuestState[];
+  /** 更新任务：状态流转必须合法、步数只增不减且不超过总数，否则 PRECONDITION_FAILED；任务不存在 NOT_FOUND */
+  updateQuest(id: string, patch: { status?: QuestStatus; stepIndex?: number }, at: number): QuestState;
+  /** 标记奖励已领取：仅 completed 且未领取，否则 PRECONDITION_FAILED（重复领取在这里被拒绝） */
+  markQuestClaimed(id: string, at: number): QuestState;
 
   /** 某个 NPC 的全部记忆，按时间正序 */
   memories(npcId: string): NpcMemory[];

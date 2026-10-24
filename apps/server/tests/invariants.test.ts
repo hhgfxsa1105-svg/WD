@@ -5,6 +5,8 @@ import { buildApp } from '../src/app.js';
 import { openDatabase } from '../src/db/connection.js';
 import { runMigrations } from '../src/db/migrate.js';
 import { snapshot } from '../src/modules/audit/diff.js';
+import { meetNpc } from '../src/modules/npc/memory.js';
+import { LOCATION_DEFS, NPC_DEFS, QUEST_DEFS } from '@jhz/game-rules';
 import { createSqliteGameStore } from '../src/modules/store/sqlite.js';
 import type { OfflinePolicy } from '../src/modules/cultivation/service.js';
 import { WorldClock } from '../src/shared/world-clock.js';
@@ -56,7 +58,21 @@ async function randomOp(w: World, check: (name: string) => void): Promise<void> 
     ['advance', async () => void (w.wall.t += Math.floor(r() * 3 * H))],
     ['advance-small', async () => void (w.wall.t += Math.floor(r() * 10 * MIN))],
     ['regress', async () => void (w.wall.t -= Math.floor(r() * 48 * H))],
+    ['move', async () => void (await w.post('/api/v1/actions', { kind: 'move', idempotencyKey: w.key(), locationId: pick(r, Object.keys(LOCATION_DEFS)) }))],
+    ['quest', async () => void (await w.post('/api/v1/actions', { kind: 'quest', idempotencyKey: w.key(), questId: pick(r, Object.keys(QUEST_DEFS)), op: pick(r, ['accept', 'accept', 'claim', 'abandon'] as const) }))],
+    [
+      'meet',
+      async () => {
+        try {
+          meetNpc(w.store, pick(r, Object.keys(NPC_DEFS)), w.clock.now());
+        } catch {
+          /* 不在场的人见不到，正常 */
+        }
+      },
+    ],
   ];
+  // 地点、任务与见面的权重加大，让整条新手任务链有机会被走通
+  ops.push(ops[9]!, ops[9]!, ops[10]!, ops[11]!, ops[11]!, ops[11]!, ops[0]!, ops[1]!);
   // 放置修炼与时间推进的权重加倍，让「开始 → 时间流逝 → 结算」的路径被充分走到
   ops.push(ops[3]!, ops[4]!, ops[6]!, ops[7]!, ops[4]!, ops[7]!);
   const [name, op] = pick(r, ops);
@@ -94,7 +110,14 @@ describe('不变量：任意操作序列下状态始终合法', () => {
         expect(REALMS.includes(s.realm), ctx).toBe(true);
         const pills = w.store.read((tx) => tx.inventory().find((x) => x.itemId === PILL)?.quantity ?? 0);
         expect(pills, ctx).toBeGreaterThanOrEqual(0);
-        expect(pills, ctx).toBeLessThanOrEqual(1); // 只有初始 1 枚，不可能凭空增加
+        // 丹药只有初始 1 枚，外加已领取任务奖励里的丹药，不可能凭空增加
+        const rewarded = w.store
+          .read((tx) => tx.quests())
+          .filter((q) => q.claimed)
+          .flatMap((q) => QUEST_DEFS[q.id as keyof typeof QUEST_DEFS].reward.items ?? [])
+          .filter((i) => i.itemId === PILL)
+          .reduce((n, i) => n + i.quantity, 0);
+        expect(pills, ctx).toBeLessThanOrEqual(1 + rewarded);
         const high = w.clock.now();
         expect(high, ctx).toBeGreaterThanOrEqual(lastHigh); // 世界时间只增不减
         lastHigh = high;
@@ -110,7 +133,7 @@ describe('不变量：任意操作序列下状态始终合法', () => {
 
 describe('审计可重放：按序重放全部审计差异，必须恰好得到最终状态', () => {
   type Snap = Record<string, unknown>;
-  const NESTED = ['inventory', 'npcs', 'relations', 'memories'];
+  const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests'];
   const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
   function replay(w: World, initial: Snap): Snap {
@@ -230,7 +253,7 @@ describe('时间：系统时间乱序时，放置修炼收益不超过理论上�
 describe('随机序列的覆盖面（防止测试空转）', () => {
   it('覆盖到全部事件类型、突破成功与失败、以及后天以上境界', () => {
     expect([...covered.types].sort()).toEqual(
-      expect.arrayContaining(['action.breakthrough', 'action.cultivate', 'action.rest', 'cultivation.settle', 'cultivation.start', 'cultivation.stop']),
+      expect.arrayContaining(['action.breakthrough', 'action.cultivate', 'action.rest', 'cultivation.settle', 'cultivation.start', 'cultivation.stop', 'action.move', 'action.quest.accept', 'npc.met', 'npc.memory', 'quest.progress']),
     );
     expect([...covered.outcomes].sort()).toEqual(['failure', 'success']);
     expect([...covered.realms].some((r) => r !== 'body_tempering' && r !== 'opening')).toBe(true);

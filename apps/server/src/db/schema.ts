@@ -109,7 +109,7 @@ export const worldClock = sqliteTable(
 
 /** 与 @jhz/contracts 的 ACTION_STATUSES / ACTION_KINDS 保持一致（测试校验） */
 export const DB_ACTION_STATUSES = ['RECEIVED', 'PARSING', 'VALIDATING', 'RESOLVING', 'COMMITTED', 'NARRATED', 'COMPLETED', 'FAILED'] as const;
-export const DB_ACTION_KINDS = ['fixed', 'breakthrough'] as const;
+export const DB_ACTION_KINDS = ['fixed', 'breakthrough', 'move', 'quest'] as const;
 const statusList = sql.raw(DB_ACTION_STATUSES.map((x) => `'${x}'`).join(', '));
 const kindList = sql.raw(DB_ACTION_KINDS.map((x) => `'${x}'`).join(', '));
 
@@ -280,5 +280,34 @@ export const npcMemories = sqliteTable(
     check('npc_memories_created_at', sql`${t.createdAt} >= 0`),
     index('npc_memories_npc_idx').on(t.npcId, t.createdAt),
     index('npc_memories_event_idx').on(t.eventId),
+  ],
+);
+
+/** 与 @jhz/contracts 的 QUEST_STATUSES 保持一致（测试校验） */
+export const DB_QUEST_STATUSES = ['locked', 'available', 'active', 'completed', 'failed'] as const;
+const questStatusList = sql.raw(DB_QUEST_STATUSES.map((r) => `'${r}'`).join(', '));
+
+/**
+ * 任务状态（权威存档）。任务名、步骤、奖励来自静态定义。
+ * 约束：接取时间当且仅当状态已离开 locked/available；结束时间当且仅当 completed/failed；奖励只有 completed 才可能已领取。
+ */
+export const quests = sqliteTable(
+  'quests',
+  {
+    id: text('id').primaryKey(),
+    status: text('status').notNull(),
+    stepIndex: integer('step_index').notNull().default(0),
+    acceptedAt: integer('accepted_at'),
+    finishedAt: integer('finished_at'),
+    claimedAt: integer('claimed_at'),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    check('quests_id_format', sql`${t.id} glob 'quest_*' and length(${t.id}) <= 64`),
+    check('quests_status_valid', sql`${t.status} in (${questStatusList})`),
+    check('quests_step_range', sql`${t.stepIndex} between 0 and 50`),
+    check('quests_accepted_rule', sql`(${t.acceptedAt} is null) = (${t.status} in ('locked', 'available'))`),
+    check('quests_finished_rule', sql`(${t.finishedAt} is null) = (${t.status} not in ('completed', 'failed'))`),
+    check('quests_claimed_rule', sql`${t.claimedAt} is null or ${t.status} = 'completed'`),
   ],
 );

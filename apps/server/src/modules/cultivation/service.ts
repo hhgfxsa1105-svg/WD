@@ -3,6 +3,7 @@ import { CultivationResponseSchema, type CultivationResponse, type StateChange }
 import { DEFAULT_METHOD_ID, IDLE_CULTIVATION, OFFLINE, settleIdleCultivation } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
+import { advanceQuests } from '../quest/service.js';
 import type { Clock } from '../../shared/runtime.js';
 import type { CultivationJobRecord, GameStore, GameTx, LogPayload } from '../store/types.js';
 
@@ -121,6 +122,7 @@ export function createCultivationService({ store, clock, offline }: CultivationD
       const diff = stateDiff(before, snapshot(tx));
       const payload = logOf(settled);
       const log = diff || payload ? tx.appendEvent({ actionId: null, eventType, before: diff?.before ?? null, after: diff?.after ?? null, at: now, log: payload }) : null;
+      advanceQuests(tx, now, null); // 修炼进度变化可能让任务条件成立
       return respond(tx, settled, now, log);
     });
   }

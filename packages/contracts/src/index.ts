@@ -4,6 +4,7 @@ export * from './enums.js';
 export * from './limits.js';
 export * from './npc.js';
 export * from './player.js';
+export * from './quest.js';
 export * from './action.js';
 export * from './ai-plan.js';
 export * from './ai-status.js';

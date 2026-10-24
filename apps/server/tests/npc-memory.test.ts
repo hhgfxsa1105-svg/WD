@@ -364,7 +364,7 @@ describe('存档导出 / 导入包含记忆', () => {
   });
 
   it('旧的 v2 文件（没有 memories 字段）仍可解析，记忆视为没有', () => {
-    const f = JSON.parse(JSON.stringify(buildSaveFile(createInitialPlayer(), { ...worldOf(createMemoryGameStore()), memories: [] })));
+    const f = JSON.parse(JSON.stringify(buildSaveFile(createInitialPlayer(), { ...worldOf(createMemoryGameStore()), memories: [], quests: [] })));
     delete f.world.memories;
     const parsed = parseSaveFile(JSON.stringify(f));
     expect(parsed.world!.memories).toEqual([]);
@@ -372,7 +372,7 @@ describe('存档导出 / 导入包含记忆', () => {
   });
 
   it('导入拒绝：未知 NPC 的记忆、格式不合法的记忆', () => {
-    const f = JSON.parse(JSON.stringify(buildSaveFile(createInitialPlayer(), { ...worldOf(createMemoryGameStore()), memories: [] })));
+    const f = JSON.parse(JSON.stringify(buildSaveFile(createInitialPlayer(), { ...worldOf(createMemoryGameStore()), memories: [], quests: [] })));
     const goodMem = { id: 'm1', npcId: GUARD, eventId: 'e', type: 'met', summary: '你与赵铁牛初次相识。', importance: 6, sourceCount: 1, createdAt: 0 };
     f.world.memories = [{ ...goodMem, npcId: 'npc_nobody' }];
     expect(() => mergeImportedWorld(parseSaveFile(JSON.stringify(f)).world!)).toThrow(/未知人物/);

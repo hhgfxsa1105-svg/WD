@@ -97,3 +97,22 @@ export const INITIAL_RELATIONS: readonly RelationSeed[] = [
   { npcId: 'npc_senior_sister', targetType: 'npc', targetId: 'npc_master_qingyun', affinity: 60, trust: 90, hostility: 0 },
   { npcId: 'npc_gate_guard', targetType: 'npc', targetId: 'npc_senior_sister', affinity: 30, trust: 50, hostility: 0 },
 ];
+
+/* ------------------------------------------------------------------ */
+/* 移动：地点之间的连接与体力消耗                                          */
+/* ------------------------------------------------------------------ */
+
+/** 地点的相邻关系（无向）：山门 — 练功场 — 大殿；练功场 — 藏经阁 */
+export const LOCATION_LINKS: readonly (readonly [LocationId, LocationId])[] = [
+  ['loc_qingyun_gate', 'loc_qingyun_yard'],
+  ['loc_qingyun_yard', 'loc_qingyun_hall'],
+  ['loc_qingyun_yard', 'loc_qingyun_library'],
+];
+
+/** 每次移动消耗的体力 */
+export const MOVE_STAMINA_COST = 3;
+
+export const areAdjacent = (a: string, b: string): boolean => LOCATION_LINKS.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+
+/** 从某地点出发一步能到的地点 */
+export const neighborsOf = (id: string): LocationId[] => LOCATION_LINKS.flatMap(([x, y]) => (x === id ? [y] : y === id ? [x] : []));

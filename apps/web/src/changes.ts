@@ -7,6 +7,9 @@ const LABEL: Record<ChangeStat, string> = {
   realmProgress: '经验',
   maxHp: '气血上限',
   maxStamina: '体力上限',
+  yuanbao: '元宝',
+  silver: '银两',
+  copper: '铜钱',
 };
 
 export interface LogChip {

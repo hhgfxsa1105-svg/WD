@@ -9,6 +9,8 @@ export * from './items.js';
 export * from './memory.js';
 export * from './narrative.js';
 export * from './progress.js';
+export * from './quests.js';
 export * from './rng.js';
 export * from './tables.js';
+export * from './travel.js';
 export * from './world.js';

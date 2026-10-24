@@ -1,5 +1,5 @@
-import { NpcMemorySchema, NpcStateSchema, RelationshipSchema, type NpcMemory, type NpcState, type Relationship } from '@jhz/contracts';
-import { MEMORY_EVENTS, planCompaction, summarizeMemories, INITIAL_RELATIONS, NPC_DEFS, NPC_STATUSES, applyRelationDelta, isLocationId, isNpcId, type RelationDelta, type RelationTargetType } from '@jhz/game-rules';
+import { NpcMemorySchema, NpcStateSchema, QuestStateSchema, RelationshipSchema, type NpcMemory, type NpcState, type QuestState, type QuestStatus, type Relationship } from '@jhz/contracts';
+import { QUEST_DEFS, canTransition, initialQuestStatus, isQuestId, type QuestId, MEMORY_EVENTS, planCompaction, summarizeMemories, INITIAL_RELATIONS, NPC_DEFS, NPC_STATUSES, applyRelationDelta, isLocationId, isNpcId, type RelationDelta, type RelationTargetType } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 
 /** 单机固定的玩家 ID（关系对象为玩家时使用） */
@@ -44,7 +44,10 @@ export function nextRelationship(current: Relationship | undefined, npcId: strin
  * 校验并规范化导入的人物世界：每个 NPC 与地点必须在定义里；关系的双方必须存在、不能指向自己、不得重复。
  * 文件里缺少的 NPC / 关系用初始值补齐。不合格时抛出带中文原因的 Error。
  */
-export function mergeImportedWorld(world: { npcs: NpcState[]; relationships: Relationship[]; memories?: NpcMemory[] }): { npcs: NpcState[]; relationships: Relationship[]; memories: ImportedMemory[] } {
+export function mergeImportedWorld(
+  world: { npcs: NpcState[]; relationships: Relationship[]; memories?: NpcMemory[]; quests?: QuestState[] },
+  now: number = Date.now(),
+): { npcs: NpcState[]; relationships: Relationship[]; memories: ImportedMemory[]; quests: QuestRecord[] } {
   const npcs = new Map(initialNpcs().map((n) => [n.id, n]));
   const seenNpc = new Set<string>();
   for (const n of world.npcs) {
@@ -73,7 +76,37 @@ export function mergeImportedWorld(world: { npcs: NpcState[]; relationships: Rel
     byNpc.set(m.npcId, [...(byNpc.get(m.npcId) ?? []), m]);
   }
   const memories = [...byNpc.entries()].map(([npcId, list]) => ({ npcId, ...summarizeMemories(list) }));
-  return { npcs: [...npcs.values()], relationships: [...rels.values()], memories };
+  return { npcs: [...npcs.values()], relationships: [...rels.values()], memories, quests: mergeImportedQuests(world.quests ?? [], now) };
+}
+
+/** 校验并规范化导入的任务状态：任务必须存在、不重复；步数、状态与领取标记必须自洽；进行中或已完成的任务其前置任务必须已完成 */
+export function mergeImportedQuests(imported: QuestState[], now: number): QuestRecord[] {
+  const byId = new Map(initialQuestRecords().map((q) => [q.id, q]));
+  const seen = new Set<string>();
+  for (const q of imported) {
+    if (!isQuestId(q.id)) throw new Error(`存档里有未知任务：${q.id}`);
+    if (seen.has(q.id)) throw new Error(`存档里任务重复：${q.id}`);
+    seen.add(q.id);
+    const total = QUEST_DEFS[q.id].steps.length;
+    if (q.stepIndex > total) throw new Error(`存档里任务 ${q.id} 的进度超过步骤总数`);
+    if (q.status === 'completed' && q.stepIndex !== total) throw new Error(`存档里任务 ${q.id} 已完成但步骤没有全部完成`);
+    if ((q.status === 'locked' || q.status === 'available') && q.stepIndex !== 0) throw new Error(`存档里任务 ${q.id} 尚未接取却有进度`);
+    if (q.claimed && q.status !== 'completed') throw new Error(`存档里任务 ${q.id} 未完成却已领取奖励`);
+    byId.set(q.id, {
+      id: q.id,
+      status: q.status,
+      stepIndex: q.stepIndex,
+      acceptedAt: q.status === 'locked' || q.status === 'available' ? null : now,
+      finishedAt: q.status === 'completed' || q.status === 'failed' ? now : null,
+      claimedAt: q.claimed ? now : null,
+    });
+  }
+  for (const q of byId.values()) {
+    assertQuest(q.id);
+    const req = QUEST_DEFS[q.id].requires;
+    if (req && (q.status === 'active' || q.status === 'completed') && byId.get(req)?.status !== 'completed') throw new Error(`存档里任务 ${q.id} 的前置任务 ${req} 尚未完成`);
+  }
+  return [...byId.values()];
 }
 
 export interface ImportedMemory {
@@ -104,6 +137,56 @@ export function compactMemories(
 }
 
 /** 导出存档用的世界快照：NPC 状态、关系与全部记忆 */
-export function snapshotWorld(tx: { npcs(): NpcState[]; relationships(): Relationship[]; memories(npcId: string): NpcMemory[] }) {
-  return { npcs: tx.npcs(), relationships: tx.relationships(), memories: tx.npcs().flatMap((n) => tx.memories(n.id)) };
+export function snapshotWorld(tx: { npcs(): NpcState[]; relationships(): Relationship[]; memories(npcId: string): NpcMemory[]; quests(): QuestState[] }) {
+  return { npcs: tx.npcs(), relationships: tx.relationships(), memories: tx.npcs().flatMap((n) => tx.memories(n.id)), quests: tx.quests() };
+}
+
+/* ------------------------------------------------------------------ */
+/* 任务                                                                */
+/* ------------------------------------------------------------------ */
+
+/** 存档里的任务记录（含时间戳；对外的 QuestState 不带时间戳） */
+export interface QuestRecord {
+  id: string;
+  status: QuestStatus;
+  stepIndex: number;
+  acceptedAt: number | null;
+  finishedAt: number | null;
+  claimedAt: number | null;
+}
+
+export const toQuestState = (r: QuestRecord): QuestState => QuestStateSchema.parse({ id: r.id, status: r.status, stepIndex: r.stepIndex, claimed: r.claimedAt !== null });
+
+export const initialQuestRecords = (): QuestRecord[] =>
+  (Object.keys(QUEST_DEFS) as QuestId[]).map((id) => ({ id, status: initialQuestStatus(id), stepIndex: 0, acceptedAt: null, finishedAt: null, claimedAt: null }));
+
+export function assertQuest(id: string): asserts id is QuestId {
+  if (!isQuestId(id)) throw new AppError('NOT_FOUND', '没有这个任务');
+}
+
+/**
+ * 应用一次任务更新并返回新记录：状态流转必须合法；已完成步数只增不减且不超过步骤总数；
+ * 时间戳随状态自动维护（离开 locked/available 记接取时间，进入终态记结束时间）。不合法抛 PRECONDITION_FAILED。
+ */
+export function applyQuestPatch(cur: QuestRecord, patch: { status?: QuestStatus; stepIndex?: number }, at: number): QuestRecord {
+  assertQuest(cur.id);
+  const total = QUEST_DEFS[cur.id].steps.length;
+  const next: QuestRecord = { ...cur };
+  if (patch.status !== undefined && patch.status !== cur.status) {
+    if (!canTransition(cur.status, patch.status)) throw new AppError('PRECONDITION_FAILED', `任务状态不能从 ${cur.status} 变为 ${patch.status}`);
+    next.status = patch.status;
+    if (cur.acceptedAt === null && patch.status !== 'available') next.acceptedAt = at;
+    if (patch.status === 'completed' || patch.status === 'failed') next.finishedAt = at;
+  }
+  if (patch.stepIndex !== undefined) {
+    if (!Number.isInteger(patch.stepIndex) || patch.stepIndex < cur.stepIndex || patch.stepIndex > total) throw new AppError('PRECONDITION_FAILED', '任务进度只能前进，且不能超过步骤总数');
+    next.stepIndex = patch.stepIndex;
+  }
+  return next;
+}
+
+/** 领取奖励的前置检查：必须已完成且尚未领取 */
+export function assertClaimable(cur: QuestRecord): void {
+  if (cur.status !== 'completed') throw new AppError('PRECONDITION_FAILED', '任务还没有完成，不能领取奖励');
+  if (cur.claimedAt !== null) throw new AppError('PRECONDITION_FAILED', '奖励已经领取过了');
 }

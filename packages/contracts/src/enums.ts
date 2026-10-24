@@ -40,7 +40,7 @@ export const EffectKindSchema = z.enum(EFFECT_KINDS);
 export type EffectKind = z.infer<typeof EffectKindSchema>;
 
 /** 行动可改变的数值（用于结果摘要） */
-export const CHANGE_STATS = ['stamina', 'hp', 'neili', 'realmProgress', 'maxHp', 'maxStamina'] as const;
+export const CHANGE_STATS = ['stamina', 'hp', 'neili', 'realmProgress', 'maxHp', 'maxStamina', 'yuanbao', 'silver', 'copper'] as const;
 export const ChangeStatSchema = z.enum(CHANGE_STATS);
 export type ChangeStat = z.infer<typeof ChangeStatSchema>;
 
@@ -52,7 +52,7 @@ export const CULTIVATION_STATUSES = ['running', 'stopped'] as const;
 export const CultivationStatusSchema = z.enum(CULTIVATION_STATUSES);
 export type CultivationStatus = z.infer<typeof CultivationStatusSchema>;
 
-export const ACTION_KINDS = ['fixed', 'breakthrough'] as const;
+export const ACTION_KINDS = ['fixed', 'breakthrough', 'move', 'quest'] as const;
 
 export const LOG_TYPES = ['fixed', 'breakthrough', 'idle', 'system'] as const;
 export const LogTypeSchema = z.enum(LOG_TYPES);

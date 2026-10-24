@@ -17,10 +17,10 @@ import {
 } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import type { Db } from '../../db/connection.js';
-import { actions, aiCallLogs, auditEvents, cultivationJobs, inventory, npcMemories, npcRelationships, npcs, playerStates, players, worldClock } from '../../db/schema.js';
+import { actions, aiCallLogs, auditEvents, cultivationJobs, inventory, npcMemories, npcRelationships, npcs, playerStates, quests, players, worldClock } from '../../db/schema.js';
 import { AppError } from '../../shared/errors.js';
 import type { ImportedMemory } from './world-rules.js';
-import { assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship } from './world-rules.js';
+import { applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 /** 单机固定的玩家 ID */
@@ -159,6 +159,21 @@ function makeTx(db: Executor): GameTx {
         .run();
     },
 
+    quests: () => readQuests(db).map(toQuestState),
+    updateQuest(id, patch, at) {
+      assertQuest(id);
+      const next = applyQuestPatch(readQuest(db, id), patch, at);
+      writeQuest(db, next);
+      return toQuestState(next);
+    },
+    markQuestClaimed(id, at) {
+      assertQuest(id);
+      const cur = readQuest(db, id);
+      assertClaimable(cur);
+      const next = { ...cur, claimedAt: at };
+      writeQuest(db, next);
+      return toQuestState(next);
+    },
     memories: (npcId) => readMemories(db, npcId),
     memoryCounts() {
       const out: Record<string, number> = Object.fromEntries(readNpcs(db).map((n) => [n.id, 0]));
@@ -326,6 +341,19 @@ function readNpcs(db: Executor): NpcState[] {
     .map((r) => NpcStateSchema.parse({ id: r.id, locationId: r.locationId, status: r.status, goals: JSON.parse(r.goalsJson) }));
 }
 
+const toQuestRecord = (r: typeof quests.$inferSelect): QuestRecord => ({ id: r.id, status: r.status as QuestRecord['status'], stepIndex: r.stepIndex, acceptedAt: r.acceptedAt, finishedAt: r.finishedAt, claimedAt: r.claimedAt });
+function readQuests(db: Executor): QuestRecord[] {
+  return db.select().from(quests).orderBy(asc(quests.id)).all().map(toQuestRecord);
+}
+function readQuest(db: Executor, id: string): QuestRecord {
+  const r = db.select().from(quests).where(eq(quests.id, id)).get();
+  if (!r) throw new AppError('NOT_FOUND', '没有这个任务');
+  return toQuestRecord(r);
+}
+function writeQuest(db: Executor, q: QuestRecord): void {
+  db.update(quests).set({ status: q.status, stepIndex: q.stepIndex, acceptedAt: q.acceptedAt, finishedAt: q.finishedAt, claimedAt: q.claimedAt, updatedAt: Date.now() }).where(eq(quests.id, q.id)).run();
+}
+
 function readMemories(db: Executor, npcId: string): NpcMemory[] {
   return db
     .select()
@@ -364,8 +392,8 @@ export function writePlayerState(db: Db, state: PlayerState): void {
 }
 
 /** 覆盖写入 NPC 状态与关系（导入存档用）；world 为 null 表示重置为初始。世界数据须已通过 mergeImportedWorld 校验 */
-export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships: Relationship[]; memories: ImportedMemory[] } | null): void {
-  const w = world ?? { npcs: initialNpcs(), relationships: initialRelationships(), memories: [] };
+export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships: Relationship[]; memories: ImportedMemory[]; quests: QuestRecord[] } | null): void {
+  const w = world ?? { npcs: initialNpcs(), relationships: initialRelationships(), memories: [], quests: initialQuestRecords() };
   db.transaction(
     (tx) => {
       tx.delete(npcRelationships).run();
@@ -375,6 +403,8 @@ export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships
         tx.insert(npcs).values({ id: n.id, ...v }).onConflictDoUpdate({ target: npcs.id, set: { ...v, updatedAt: Date.now() } }).run();
       }
       for (const r of w.relationships) tx.insert(npcRelationships).values(r).run();
+      tx.delete(quests).run();
+      for (const q of w.quests) tx.insert(quests).values(q).run();
       for (const m of w.memories) {
         tx.insert(npcMemories).values({ id: randomUUID(), npcId: m.npcId, eventId: null, memoryType: 'summary', summary: m.summary, importance: m.importance, sourceCount: m.sourceCount, createdAt: m.createdAt }).run();
       }
@@ -402,6 +432,9 @@ export function ensureSeed(db: Db, initial: PlayerState = createInitialPlayer())
       }
       for (const r of initialRelationships()) {
         tx.insert(npcRelationships).values(r).onConflictDoNothing().run();
+      }
+      for (const q of initialQuestRecords()) {
+        tx.insert(quests).values(q).onConflictDoNothing().run();
       }
     },
     { behavior: 'immediate' },

@@ -57,6 +57,13 @@
       "when": 1792840811134,
       "tag": "0007_npc_memories",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792842550350,
+      "tag": "0008_quests_and_move_kinds",
+      "breakpoints": true
     }
   ]
 }

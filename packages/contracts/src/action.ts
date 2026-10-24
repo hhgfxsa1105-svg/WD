@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ActionStatusSchema, ChangeStatSchema, FixedActionIdSchema } from './enums.js';
-import { AiActionTypeSchema } from './ai-plan.js';
+import { QUEST_OPS } from './quest.js';
+import { AiActionTypeSchema, EntityIdSchema } from './ai-plan.js';
 import { ItemIdSchema } from './inventory.js';
 import { LogRecordSchema } from './log.js';
 import { PlayerStateSchema } from './player.js';
@@ -30,6 +31,10 @@ export const SubmitActionRequestSchema = z.discriminatedUnion('kind', [
       pillItemId: ItemIdSchema.nullable(),
     })
     .strict(),
+  /** 前往相连的地点（需要体力）；是否相连、体力够不够由服务端判定 */
+  z.object({ kind: z.literal('move'), idempotencyKey: IdempotencyKeySchema, locationId: EntityIdSchema }).strict(),
+  /** 任务操作：接取、领取奖励、放弃；条件与进度由服务端判定 */
+  z.object({ kind: z.literal('quest'), idempotencyKey: IdempotencyKeySchema, questId: EntityIdSchema, op: z.enum(QUEST_OPS) }).strict(),
 ]);
 export type SubmitActionRequest = z.infer<typeof SubmitActionRequestSchema>;
 

@@ -373,7 +373,7 @@ describe('存档导出 / 导入包含人物状态', () => {
       tx.adjustRelationship('npc_senior_sister', { type: 'player', id: 'player_1' }, { affinity: 13, hostility: 4 });
       tx.adjustRelationship('npc_librarian', { type: 'npc', id: 'npc_master_qingyun' }, { trust: 9 });
     });
-    const text = JSON.stringify(buildSaveFile(s1.read((tx) => tx.player()), { ...worldOf(s1), memories: [] }));
+    const text = JSON.stringify(buildSaveFile(s1.read((tx) => tx.player()), { ...worldOf(s1), memories: [], quests: [] }));
 
     const d2 = fresh();
     const s2 = createSqliteGameStore(d2.db);
@@ -411,7 +411,7 @@ describe('存档导出 / 导入包含人物状态', () => {
     expect(merged.relationships).toHaveLength(INITIAL_RELATIONS.length);
   });
 
-  const good = () => buildSaveFile(createInitialPlayer(), { ...worldOf(createMemoryGameStore()), memories: [] });
+  const good = () => buildSaveFile(createInitialPlayer(), { ...worldOf(createMemoryGameStore()), memories: [], quests: [] });
   it.each([
     ['未知 NPC', (w: ReturnType<typeof good>) => ((w as { world: { npcs: unknown[] } }).world.npcs = [{ id: 'npc_nobody', locationId: 'loc_qingyun_gate', status: 'active', goals: [] }]), /未知人物/],
     ['未知地点', (w: ReturnType<typeof good>) => ((w as { world: { npcs: unknown[] } }).world.npcs = [{ id: 'npc_gate_guard', locationId: 'loc_nowhere', status: 'active', goals: [] }]), /未知地点/],

@@ -3,6 +3,7 @@ import type { LogRecord, Realm } from '@jhz/contracts';
 import { MEMORY_EVENTS, NPC_DEFS, applyRelationDelta, isNpcId, memorySummary, type MemoryEventKind } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
+import { advanceQuests } from '../quest/service.js';
 import type { GameStore, GameTx } from '../store/types.js';
 
 const PLAYER = { type: 'player' as const, id: 'player_1' };
@@ -74,6 +75,7 @@ export function meetNpc(store: GameStore, npcId: string, at: number): MeetResult
       log: { type: 'system', narrative, changes: [], breakthrough: null, idle: null, note: null },
     });
     recordNpcMemories(tx, { sourceEventId: eventId, actionId: null, at, entries: [{ npcId, kind: 'met' }] });
+    advanceQuests(tx, at, null); // 相识可能让任务条件成立
     return { firstMeeting: true, log: log!, narrative };
   });
 }

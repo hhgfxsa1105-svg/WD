@@ -6,11 +6,12 @@ import {
   type StateChange,
   type SubmitActionRequest,
 } from '@jhz/contracts';
-import { pillGradeOf, resolveBreakthrough, resolveFixedAction, type Rng } from '@jhz/game-rules';
+import { pillGradeOf, resolveBreakthrough, resolveFixedAction, resolveMove, type Rng } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import type { Clock } from '../../shared/runtime.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
 import { breakthroughWitnesses, recordNpcMemories } from '../npc/memory.js';
+import { advanceQuests, resolveQuestOp } from '../quest/service.js';
 import type { GameStore, GameTx, LogPayload } from '../store/types.js';
 
 /** 状态机允许的流转；已 COMMITTED 的行动不得再次结算 */
@@ -75,6 +76,18 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       };
     }
 
+    if (req.kind === 'move') {
+      const r = resolveMove(player, req.locationId);
+      if (!r.ok) throw new AppError(r.code === 'UNKNOWN_LOCATION' ? 'NOT_FOUND' : 'PRECONDITION_FAILED', r.message);
+      tx.savePlayer(r.player);
+      return { changes: r.changes, narrative: r.narrative, breakthrough: null, log: { type: 'fixed', narrative: r.narrative, changes: r.changes, breakthrough: null, idle: null, note: null } };
+    }
+
+    if (req.kind === 'quest') {
+      const r = resolveQuestOp(tx, req, now);
+      return { changes: r.changes, narrative: r.narrative, breakthrough: null, log: r.log };
+    }
+
     // 突破：先校验丹药，再结算；丹药在尝试时消耗，不论成败
     let pillGrade = null;
     let pillName: string | null = null;
@@ -103,7 +116,11 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
     };
   }
 
-  const fingerprintOf = (req: Req) => (req.kind === 'fixed' ? `fixed:${req.actionId}` : `breakthrough:${req.pillItemId ?? ''}`);
+  const fingerprintOf = (req: Req) =>
+    req.kind === 'fixed' ? `fixed:${req.actionId}` : req.kind === 'move' ? `move:${req.locationId}` : req.kind === 'quest' ? `quest:${req.questId}:${req.op}` : `breakthrough:${req.pillItemId ?? ''}`;
+
+  const defaultEventType = (req: Req) =>
+    req.kind === 'fixed' ? `action.${req.actionId}` : req.kind === 'move' ? 'action.move' : req.kind === 'quest' ? `action.quest.${req.op}` : 'action.breakthrough';
 
   /** 只查重放：同一幂等键已有记录时返回首次结果（指纹不同则 409）；没有记录返回 null。自由行动用它在调用 AI 之前先拦截重复请求。 */
   function findReplay(idempotencyKey: string, fingerprint: string): ActionResponse | null {
@@ -136,7 +153,8 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       const resolved = resolveInTx(tx, req, now);
       status = advance(status, 'COMMITTED');
       // 不交给 AI 叙事的事件，模板叙事随结算一并完成；交给 AI 的停在 COMMITTED，叙事成功后才 COMPLETED
-      if (!narratable?.(resolved.log.type)) status = advance(status, 'COMPLETED');
+      const aiNarratable = (req.kind === 'fixed' || req.kind === 'breakthrough') && !!narratable?.(resolved.log.type);
+      if (!aiNarratable) status = advance(status, 'COMPLETED');
 
       const actionId = randomUUID();
       const player = tx.player();
@@ -153,12 +171,12 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       const base = { id: actionId, kind: req.kind, idempotencyKey: req.idempotencyKey, fingerprint, status, createdAt: now };
       tx.saveAction({ ...base, response: draft }); // 先落行动，审计事件才能引用它
       const diff = stateDiff(before, snapshot(tx));
-      const narrated = !!narratable?.(resolved.log.type);
+      const narrated = aiNarratable;
       const eventId = randomUUID();
       const log = tx.appendEvent({
         id: eventId,
         actionId,
-        eventType: extra.eventType ?? (req.kind === 'fixed' ? `action.${req.actionId}` : 'action.breakthrough'),
+        eventType: extra.eventType ?? defaultEventType(req),
         before: diff?.before ?? null,
         after: diff?.after ?? null,
         at: now,
@@ -167,6 +185,8 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       // 在场的 NPC 会记住这次突破（记忆与关系变化记在单独的 npc.memory 事件里）
       const bt = resolved.log.breakthrough;
       if (bt) recordNpcMemories(tx, { sourceEventId: eventId, actionId, at: now, entries: breakthroughWitnesses(tx, bt.outcome, bt.realmTo) });
+      // 这次行动可能让任务条件成立（到达地点、修炼进度、突破……）
+      advanceQuests(tx, now, actionId);
       const response = ActionResponseSchema.parse({ ...draft, log });
       tx.saveAction({ ...base, response });
       return { response, fresh: true };

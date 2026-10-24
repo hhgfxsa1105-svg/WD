@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type NpcMemory, type NpcState, type PlayerState, type Relationship } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
-import { assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
+import { applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 interface State {
@@ -13,6 +13,7 @@ interface State {
   npcs: Map<string, NpcState>;
   relations: Map<string, Relationship>;
   memories: Map<string, NpcMemory>;
+  quests: Map<string, QuestRecord>;
   events: (AuditEvent & { log: LogRecord | null })[];
   seq: number;
 }
@@ -25,6 +26,7 @@ const cloneState = (s: State): State => ({
   npcs: new Map([...s.npcs].map(([k, v]) => [k, structuredClone(v)])),
   relations: new Map([...s.relations].map(([k, v]) => [k, { ...v }])),
   memories: new Map([...s.memories].map(([k, v]) => [k, { ...v }])),
+  quests: new Map([...s.quests].map(([k, v]) => [k, { ...v }])),
   events: structuredClone(s.events),
   seq: s.seq,
 });
@@ -61,6 +63,21 @@ function makeTx(s: State): GameTx {
         if (other) throw new AppError('CONFLICT', '已有进行中的修炼');
       }
       s.jobs.set(job.id, { ...job });
+    },
+    quests: () => [...s.quests.values()].map(toQuestState),
+    updateQuest(id, patch, at) {
+      assertQuest(id);
+      const next = applyQuestPatch(s.quests.get(id)!, patch, at);
+      s.quests.set(id, next);
+      return toQuestState(next);
+    },
+    markQuestClaimed(id, at) {
+      assertQuest(id);
+      const cur = s.quests.get(id)!;
+      assertClaimable(cur);
+      const next = { ...cur, claimedAt: at };
+      s.quests.set(id, next);
+      return toQuestState(next);
     },
     memories: (npcId) => [...s.memories.values()].filter((m) => m.npcId === npcId).sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)).map((m) => ({ ...m })),
     memoryCounts() {
@@ -161,6 +178,7 @@ export function createMemoryGameStore(initial: PlayerState = createInitialPlayer
     actions: new Map(),
     npcs: new Map(initialNpcs().map((n) => [n.id, n])),
     memories: new Map(),
+    quests: new Map(initialQuestRecords().map((q) => [q.id, q])),
     relations: new Map(initialRelationships().map((r) => [relationKey(r.npcId, r.targetType, r.targetId), r])),
     events: [],
     seq: 0,

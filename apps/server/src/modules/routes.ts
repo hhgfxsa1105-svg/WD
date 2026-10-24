@@ -5,6 +5,7 @@ import {
   InventoryResponseSchema,
   NpcListResponseSchema,
   NpcMemoryListResponseSchema,
+  QuestListResponseSchema,
   LogResponseSchema,
   PlayerStateSchema,
   SubmitActionRequestSchema,
@@ -19,6 +20,7 @@ import type { CultivationService } from './cultivation/service.js';
 import type { GameStore } from './store/types.js';
 import type { Clock } from '../shared/runtime.js';
 import type { AiGateway } from './ai/gateway.js';
+import { questViews } from './quest/service.js';
 import type { Narrator } from './narrative/service.js';
 
 interface Deps {
@@ -73,6 +75,9 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
     const all = store.read((tx) => tx.memories(req.params.id));
     return NpcMemoryListResponseSchema.parse({ npcId: req.params.id, memories: context === '1' ? selectMemories(all) : all });
   });
+
+  // 任务列表（只读）：静态文字 + 当前状态；接取、领取、放弃走 POST /actions（kind: quest）
+  app.get('/api/v1/quests', async () => QuestListResponseSchema.parse({ quests: store.read((tx) => questViews(tx)) }));
 
   app.get('/api/v1/player/state', async () => PlayerStateSchema.parse(store.read((tx) => tx.player())));
   app.get('/api/v1/player/inventory', async () => InventoryResponseSchema.parse({ items: store.read((tx) => tx.inventory()) }));
