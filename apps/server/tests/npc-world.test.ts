@@ -16,7 +16,8 @@ import { buildSystemPrompt } from '../src/modules/ai/prompt.js';
 import { snapshot, stateDiff } from '../src/modules/audit/diff.js';
 import { buildSaveFile, parseSaveFile } from '../src/modules/player/save-file.js';
 import { createMemoryGameStore } from '../src/modules/store/memory.js';
-import { createSqliteGameStore, ensureSeed, writePlayerState, writeWorldState } from '../src/modules/store/sqlite.js';
+import { importSave } from '../src/modules/player/import.js';
+import { createSqliteGameStore, ensureSeed, writeWorldState } from '../src/modules/store/sqlite.js';
 import type { GameStore } from '../src/modules/store/types.js';
 import { mergeImportedWorld } from '../src/modules/store/world-rules.js';
 
@@ -379,8 +380,7 @@ describe('存档导出 / 导入包含人物状态', () => {
     const s2 = createSqliteGameStore(d2.db);
     const parsed = parseSaveFile(text);
     expect(parsed.schemaVersion).toBe(2);
-    writePlayerState(d2.db, parsed.player);
-    writeWorldState(d2.db, mergeImportedWorld(parsed.world!));
+    importSave(d2.db, parsed);
     expect(worldOf(s2)).toEqual(worldOf(s1));
   });
 

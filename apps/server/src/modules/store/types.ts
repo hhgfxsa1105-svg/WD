@@ -28,6 +28,18 @@ export interface StoredAction {
 /** 玩家可见日志的内容（序号与时间由存档层在写入时赋予） */
 export type LogPayload = Omit<LogRecord, 'id' | 'at'>;
 
+/** 一次改变了某条关系的审计事件（前后值来自事件的差异；before 为 null 表示此前没有这条关系） */
+export interface RelationChangeRecord {
+  seq: number;
+  eventId: string;
+  eventType: string;
+  at: number;
+  /** 造成变化的事件类型：npc.memory 是后果事件，真正的原因是紧挨着它之前的那个事件 */
+  causeType: string;
+  before: { affinity: number; trust: number; hostility: number } | null;
+  after: { affinity: number; trust: number; hostility: number };
+}
+
 export interface AuditEventInput {
   /** 指定事件 ID（记忆需要在事件落库前拿到它）；不给则自动生成 */
   id?: string;
@@ -79,6 +91,9 @@ export interface GameTx {
    * 写入后若超过上限，在同一事务里把旧的低重要性记忆合并为摘要。
    */
   addMemory(input: { npcId: string; eventId: string; type: MemoryEventKind; summary: string; importance: number; at: number }): NpcMemory;
+
+  /** 改变过某条关系的全部审计事件（按序号正序），用于解释关系数值的来源 */
+  relationHistory(npcId: string, target: { type: RelationTargetType; id: string }): RelationChangeRecord[];
 
   findActionByKey(idempotencyKey: string): StoredAction | null;
   getAction(id: string): StoredAction | null;

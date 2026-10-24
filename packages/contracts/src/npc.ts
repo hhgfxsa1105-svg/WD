@@ -95,3 +95,42 @@ export type NpcMemory = z.infer<typeof NpcMemorySchema>;
 
 export const NpcMemoryListResponseSchema = z.object({ npcId: ID, memories: z.array(NpcMemorySchema).max(500) }).strict();
 export type NpcMemoryListResponse = z.infer<typeof NpcMemoryListResponseSchema>;
+
+/* ------------------------------------------------------------------ */
+/* 关系数值的来源解释                                                    */
+/* ------------------------------------------------------------------ */
+
+export const RelationChangeSchema = z
+  .object({
+    /** 审计事件序号与 ID：可用 GET /audit/actions/:id 或数据库核对 */
+    seq: z.number().int().min(1),
+    eventId: z.string().min(1).max(64),
+    at: z.number().int().min(0),
+    eventType: z.string().min(1).max(64),
+    /** 人能读懂的原因，如「初次相识」「目睹突破」 */
+    cause: z.string().min(1).max(60),
+    delta: RelationValuesSchema.extend({
+      affinity: z.number().int().min(-200).max(200),
+      trust: z.number().int().min(-100).max(100),
+      hostility: z.number().int().min(-100).max(100),
+    }),
+    after: RelationValuesSchema,
+  })
+  .strict();
+export type RelationChange = z.infer<typeof RelationChangeSchema>;
+
+/**
+ * 某个 NPC 对某对象（玩家或另一个 NPC）的关系数值是怎么来的：初始值 + 每次变化 = 当前值。
+ * consistent 为 true 表示审计链完整（每次变化的前值等于上一次的后值，最后一次等于当前值）。
+ */
+export const RelationExplainResponseSchema = z
+  .object({
+    npcId: ID,
+    target: z.object({ type: z.enum(['player', 'npc']), id: ID }).strict(),
+    initial: RelationValuesSchema,
+    current: RelationValuesSchema,
+    changes: z.array(RelationChangeSchema).max(2000),
+    consistent: z.boolean(),
+  })
+  .strict();
+export type RelationExplainResponse = z.infer<typeof RelationExplainResponseSchema>;

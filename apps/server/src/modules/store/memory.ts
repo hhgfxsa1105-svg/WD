@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type NpcMemory, type NpcState, type PlayerState, type Relationship } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
-import { applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
+import { relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 interface State {
@@ -63,6 +63,15 @@ function makeTx(s: State): GameTx {
         if (other) throw new AppError('CONFLICT', '已有进行中的修炼');
       }
       s.jobs.set(job.id, { ...job });
+    },
+    relationHistory(npcId, target) {
+      const key = relationKey(npcId, target.type, target.id);
+      return s.events.flatMap((e) => {
+        const c = relationChangeOf(key, e.before, e.after);
+        if (!c) return [];
+        const causeType = e.eventType === 'npc.memory' ? (s.events.find((x) => x.seq === e.seq - 1)?.eventType ?? e.eventType) : e.eventType;
+        return [{ seq: e.seq, eventId: e.id, eventType: e.eventType, at: e.at, causeType, before: c.before, after: c.after }];
+      });
     },
     quests: () => [...s.quests.values()].map(toQuestState),
     updateQuest(id, patch, at) {

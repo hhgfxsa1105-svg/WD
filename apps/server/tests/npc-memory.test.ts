@@ -12,7 +12,8 @@ import { snapshot, stateDiff } from '../src/modules/audit/diff.js';
 import { buildSaveFile, parseSaveFile } from '../src/modules/player/save-file.js';
 import { meetNpc, recordNpcMemories } from '../src/modules/npc/memory.js';
 import { createMemoryGameStore } from '../src/modules/store/memory.js';
-import { createSqliteGameStore, writePlayerState, writeWorldState } from '../src/modules/store/sqlite.js';
+import { importSave } from '../src/modules/player/import.js';
+import { createSqliteGameStore } from '../src/modules/store/sqlite.js';
 import type { GameStore, GameTx } from '../src/modules/store/types.js';
 import { mergeImportedWorld, snapshotWorld } from '../src/modules/store/world-rules.js';
 import { MEMORY_TYPES } from '@jhz/contracts';
@@ -339,7 +340,7 @@ describe('AI 无法把文字写进记忆', () => {
 describe('存档导出 / 导入包含记忆', () => {
   const worldOf = (s: GameStore) => s.read((tx) => snapshotWorld(tx));
 
-  it('导出带记忆；导入时每个 NPC 的记忆合并为一条摘要，并替换目标存档里原有的记忆', () => {
+  it('导出带记忆；导入时记忆原样保留（类型、摘要、重要性、条数、时间），引用本次导入事件，并替换目标存档里原有的记忆', () => {
     const d1 = fresh();
     const s1 = createSqliteGameStore(d1.db);
     meetNpc(s1, GUARD, T0);
@@ -352,15 +353,62 @@ describe('存档导出 / 导入包含记忆', () => {
 
     const d2 = fresh();
     const s2 = createSqliteGameStore(d2.db);
-    meetNpc(s2, GUARD, T0); // 目标存档里原有的记忆
-    const parsed = parseSaveFile(text);
-    writePlayerState(d2.db, parsed.player);
-    writeWorldState(d2.db, mergeImportedWorld(parsed.world!));
-    const got = s2.read((tx) => tx.memories(GUARD));
-    expect(got).toHaveLength(1);
-    expect(got[0]).toMatchObject({ type: 'summary', eventId: null, sourceCount: 3, importance: 6 });
-    expect(got[0]!.summary).toContain('共 3 件');
+    s2.transact((tx) => add(tx, { npcId: 'npc_librarian', summary: '目标存档里原有的记忆。' })); // 会被替换
+    const { eventId } = importSave(d2.db, parseSaveFile(text));
+    const norm = (list: NpcMemory[]) => list.map((m) => ({ type: m.type, summary: m.summary, importance: m.importance, sourceCount: m.sourceCount, createdAt: m.createdAt }));
+    expect(norm(s2.read((tx) => tx.memories(GUARD)))).toEqual(norm(s1.read((tx) => tx.memories(GUARD))));
     expect(s2.read((tx) => tx.memories('npc_librarian'))).toEqual([]);
+    for (const m of s2.read((tx) => tx.memories(GUARD))) expect(m.eventId).toBe(eventId); // 统一引用导入事件
+    // 「已相识」在导入后依然成立：再次打招呼不会重复生效（K-29 已解决）
+    expect(meetNpc(s2, GUARD, T0 + 99).firstMeeting).toBe(false);
+    // 审计：导入留下标记事件与整体差异事件
+    const types = (d2.sqlite.prepare("select event_type t from audit_events where event_type like 'save.%' order by seq").all() as { t: string }[]).map((r) => r.t);
+    expect(types).toEqual(['save.import', 'save.state']);
+  });
+
+  it('合并摘要（没有事件）也能原样导入', () => {
+    const s1 = createMemoryGameStore();
+    s1.transact((tx) => {
+      meetNpc(s1, GUARD, T0);
+      for (let i = 0; i < 60; i++) add(tx, { at: T0 + 10 + i });
+    });
+    const before = s1.read((tx) => tx.memories(GUARD));
+    expect(before.some((m) => m.type === 'summary')).toBe(true);
+    const d2 = fresh();
+    const s2 = createSqliteGameStore(d2.db);
+    importSave(d2.db, parseSaveFile(JSON.stringify(buildSaveFile(createInitialPlayer(), worldOf(s1)))));
+    const after = s2.read((tx) => tx.memories(GUARD));
+    expect(after).toHaveLength(before.length);
+    expect(after.filter((m) => m.type === 'summary').map((m) => m.sourceCount).sort()).toEqual(before.filter((m) => m.type === 'summary').map((m) => m.sourceCount).sort());
+  });
+
+  it('导入失败整体回滚：文件内容不合格时数据库一丝不变', () => {
+    const d = fresh();
+    const s = createSqliteGameStore(d.db);
+    meetNpc(s, GUARD, T0);
+    const before = { w: s.read((tx) => snapshotWorld(tx)), p: s.read((tx) => tx.player()), ev: (d.sqlite.prepare('select count(*) c from audit_events').get() as { c: number }).c };
+    const f = JSON.parse(JSON.stringify(buildSaveFile(createInitialPlayer(), { ...worldOf(createMemoryGameStore()), memories: [] })));
+    f.world.npcs = [{ id: 'npc_nobody', locationId: 'loc_qingyun_gate', status: 'active', goals: [] }];
+    expect(() => importSave(d.db, parseSaveFile(JSON.stringify(f)))).toThrow(/未知人物/);
+    expect({ w: s.read((tx) => snapshotWorld(tx)), p: s.read((tx) => tx.player()), ev: (d.sqlite.prepare('select count(*) c from audit_events').get() as { c: number }).c }).toEqual(before);
+  });
+
+  it('导入写到一半出错（数据库层面的故障）：玩家、世界、审计全部回滚', () => {
+    const d = fresh();
+    const s = createSqliteGameStore(d.db);
+    meetNpc(s, GUARD, T0);
+    const probe = () => ({ w: s.read((tx) => snapshotWorld(tx)), p: s.read((tx) => tx.player()), ev: (d.sqlite.prepare('select count(*) c from audit_events').get() as { c: number }).c });
+    const before = probe();
+    // 在写任务时让数据库报错：此时玩家状态与 NPC、关系、记忆已经写入，必须被一并撤销
+    d.sqlite.exec("create trigger boom before insert on quests begin select raise(abort, 'boom'); end");
+    const src = createMemoryGameStore({ ...createInitialPlayer(), realmProgress: 77 });
+    const save = parseSaveFile(JSON.stringify(buildSaveFile(src.read((tx) => tx.player()), { ...worldOf(src), memories: [] })));
+    expect(() => importSave(d.db, save)).toThrow(/boom/);
+    expect(probe()).toEqual(before);
+    expect(s.read((tx) => tx.player().realmProgress)).not.toBe(77);
+    d.sqlite.exec('drop trigger boom');
+    expect(() => importSave(d.db, save)).not.toThrow(); // 故障解除后可以正常导入
+    expect(s.read((tx) => tx.player().realmProgress)).toBe(77);
   });
 
   it('旧的 v2 文件（没有 memories 字段）仍可解析，记忆视为没有', () => {

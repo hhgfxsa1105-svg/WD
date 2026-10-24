@@ -3,8 +3,8 @@ import { loadDotEnv, loadEnv } from '../config/env.js';
 import { openDatabase } from '../db/connection.js';
 import { runMigrations } from '../db/migrate.js';
 import { parseSaveFile } from '../modules/player/save-file.js';
-import { createSqliteGameStore, writePlayerState, writeWorldState } from '../modules/store/sqlite.js';
-import { mergeImportedWorld } from '../modules/store/world-rules.js';
+import { importSave } from '../modules/player/import.js';
+import { createSqliteGameStore } from '../modules/store/sqlite.js';
 
 loadDotEnv();
 const env = loadEnv();
@@ -15,10 +15,8 @@ if (!file) {
 }
 
 let save;
-let world;
 try {
   save = parseSaveFile(readFileSync(file, 'utf8'));
-  world = save.world ? mergeImportedWorld(save.world) : null;
 } catch (e) {
   console.error(`导入失败：${(e as Error).message}`);
   process.exit(1);
@@ -32,7 +30,12 @@ if (env.DB_PATH !== ':memory:') {
   database.sqlite.exec(`VACUUM INTO '${backup.replaceAll("'", "''")}'`);
   console.log(`已备份当前存档：${backup}`);
 }
-writePlayerState(database.db, save.player);
-writeWorldState(database.db, world);
+try {
+  importSave(database.db, save);
+} catch (e) {
+  database.close();
+  console.error(`导入失败（存档未改动）：${(e as Error).message}`);
+  process.exit(1);
+}
 database.close();
 console.log(`已导入存档（版本 ${save.player.version}${save.world ? '' : '；旧格式存档不含人物状态，已重置为初始'}）`);

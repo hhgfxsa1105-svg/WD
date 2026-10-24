@@ -5,6 +5,7 @@ import {
   InventoryResponseSchema,
   NpcListResponseSchema,
   NpcMemoryListResponseSchema,
+  RelationExplainResponseSchema,
   QuestListResponseSchema,
   LogResponseSchema,
   PlayerStateSchema,
@@ -20,6 +21,7 @@ import type { CultivationService } from './cultivation/service.js';
 import type { GameStore } from './store/types.js';
 import type { Clock } from '../shared/runtime.js';
 import type { AiGateway } from './ai/gateway.js';
+import { explainRelation } from './npc/explain.js';
 import { questViews } from './quest/service.js';
 import type { Narrator } from './narrative/service.js';
 
@@ -67,6 +69,15 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
       }),
     }),
   );
+
+  // 解释某个 NPC 对某对象（默认玩家）的关系数值来源：初始值 + 审计事件里的每次变化 = 当前值（只读）
+  app.get<{ Params: { id: string } }>('/api/v1/world/npcs/:id/relation', async (req) => {
+    const { target } = parseWith(z.object({ target: z.string().max(64).default('player') }).strict(), req.query);
+    if (!isNpcId(req.params.id)) throw new AppError('NOT_FOUND', '没有这个人物');
+    const t = target === 'player' ? { type: 'player' as const, id: 'player_1' } : isNpcId(target) && target !== req.params.id ? { type: 'npc' as const, id: target } : null;
+    if (!t) throw new AppError('NOT_FOUND', '没有这个对象');
+    return RelationExplainResponseSchema.parse(store.read((tx) => explainRelation(tx, req.params.id, t)));
+  });
 
   // 某个 NPC 的记忆（只读）：按时间正序；`context=1` 时返回对话上下文用的精选（条数与字数受限）
   app.get<{ Params: { id: string } }>('/api/v1/world/npcs/:id/memories', async (req) => {

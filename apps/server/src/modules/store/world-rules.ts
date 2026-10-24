@@ -1,5 +1,5 @@
 import { NpcMemorySchema, NpcStateSchema, QuestStateSchema, RelationshipSchema, type NpcMemory, type NpcState, type QuestState, type QuestStatus, type Relationship } from '@jhz/contracts';
-import { QUEST_DEFS, canTransition, initialQuestStatus, isQuestId, type QuestId, MEMORY_EVENTS, planCompaction, summarizeMemories, INITIAL_RELATIONS, NPC_DEFS, NPC_STATUSES, applyRelationDelta, isLocationId, isNpcId, type RelationDelta, type RelationTargetType } from '@jhz/game-rules';
+import { isKnownItem, QUEST_DEFS, canTransition, initialQuestStatus, isQuestId, type QuestId, MEMORY_EVENTS, planCompaction, INITIAL_RELATIONS, NPC_DEFS, NPC_STATUSES, applyRelationDelta, isLocationId, isNpcId, type RelationDelta, type RelationTargetType } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 
 /** 单机固定的玩家 ID（关系对象为玩家时使用） */
@@ -45,9 +45,9 @@ export function nextRelationship(current: Relationship | undefined, npcId: strin
  * 文件里缺少的 NPC / 关系用初始值补齐。不合格时抛出带中文原因的 Error。
  */
 export function mergeImportedWorld(
-  world: { npcs: NpcState[]; relationships: Relationship[]; memories?: NpcMemory[]; quests?: QuestState[] },
+  world: { npcs: NpcState[]; relationships: Relationship[]; memories?: NpcMemory[]; quests?: QuestState[]; inventory?: { itemId: string; quantity: number }[] },
   now: number = Date.now(),
-): { npcs: NpcState[]; relationships: Relationship[]; memories: ImportedMemory[]; quests: QuestRecord[] } {
+): { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; inventory: { itemId: string; quantity: number }[] | null } {
   const npcs = new Map(initialNpcs().map((n) => [n.id, n]));
   const seenNpc = new Set<string>();
   for (const n of world.npcs) {
@@ -69,14 +69,29 @@ export function mergeImportedWorld(
     seenRel.add(k);
     rels.set(k, r);
   }
-  // 记忆：事件引用无法跨存档保留，每个 NPC 的全部记忆合并成一条摘要
-  const byNpc = new Map<string, NpcMemory[]>();
+  // 记忆：原样保留（事件引用在导入时统一改为本次导入事件）；每个 NPC 的条数不得超过上限，ID 不得重复
+  const memIds = new Set<string>();
+  const perNpc = new Map<string, number>();
   for (const m of world.memories ?? []) {
     if (!isNpcId(m.npcId)) throw new Error(`存档里有未知人物的记忆：${m.npcId}`);
-    byNpc.set(m.npcId, [...(byNpc.get(m.npcId) ?? []), m]);
+    if (memIds.has(m.id)) throw new Error(`存档里记忆重复：${m.id}`);
+    memIds.add(m.id);
+    perNpc.set(m.npcId, (perNpc.get(m.npcId) ?? 0) + 1);
+    if (perNpc.get(m.npcId)! > MAX_IMPORTED_MEMORIES_PER_NPC) throw new Error(`存档里人物 ${m.npcId} 的记忆过多`);
   }
-  const memories = [...byNpc.entries()].map(([npcId, list]) => ({ npcId, ...summarizeMemories(list) }));
-  return { npcs: [...npcs.values()], relationships: [...rels.values()], memories, quests: mergeImportedQuests(world.quests ?? [], now) };
+  const memories = (world.memories ?? []).map((m) => ({ ...m }));
+  // 背包：物品必须是已知物品、不重复；缺省（null）表示不改动目标存档的背包
+  let inventory: { itemId: string; quantity: number }[] | null = null;
+  if (world.inventory) {
+    const seenItem = new Set<string>();
+    for (const it of world.inventory) {
+      if (!isKnownItem(it.itemId)) throw new Error(`存档里有未知物品：${it.itemId}`);
+      if (seenItem.has(it.itemId)) throw new Error(`存档里物品重复：${it.itemId}`);
+      seenItem.add(it.itemId);
+    }
+    inventory = world.inventory.filter((i) => i.quantity > 0).map((i) => ({ ...i }));
+  }
+  return { npcs: [...npcs.values()], relationships: [...rels.values()], memories, quests: mergeImportedQuests(world.quests ?? [], now), inventory };
 }
 
 /** 校验并规范化导入的任务状态：任务必须存在、不重复；步数、状态与领取标记必须自洽；进行中或已完成的任务其前置任务必须已完成 */
@@ -109,13 +124,8 @@ export function mergeImportedQuests(imported: QuestState[], now: number): QuestR
   return [...byId.values()];
 }
 
-export interface ImportedMemory {
-  npcId: string;
-  summary: string;
-  importance: number;
-  sourceCount: number;
-  createdAt: number;
-}
+/** 导入时每个 NPC 允许的记忆条数上限（正常游玩远低于此；防止构造畸形文件） */
+export const MAX_IMPORTED_MEMORIES_PER_NPC = 500;
 
 /** 校验一条待写入的事件记忆（长度、重要性、类型）；不合格抛 VALIDATION_FAILED */
 export function validateMemoryInput(input: { type: string; summary: string; importance: number }): void {
@@ -137,8 +147,8 @@ export function compactMemories(
 }
 
 /** 导出存档用的世界快照：NPC 状态、关系与全部记忆 */
-export function snapshotWorld(tx: { npcs(): NpcState[]; relationships(): Relationship[]; memories(npcId: string): NpcMemory[]; quests(): QuestState[] }) {
-  return { npcs: tx.npcs(), relationships: tx.relationships(), memories: tx.npcs().flatMap((n) => tx.memories(n.id)), quests: tx.quests() };
+export function snapshotWorld(tx: { npcs(): NpcState[]; relationships(): Relationship[]; memories(npcId: string): NpcMemory[]; quests(): QuestState[]; inventory(): { itemId: string; quantity: number }[] }) {
+  return { npcs: tx.npcs(), relationships: tx.relationships(), memories: tx.npcs().flatMap((n) => tx.memories(n.id)), quests: tx.quests(), inventory: tx.inventory().map((i) => ({ itemId: i.itemId, quantity: i.quantity })) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -189,4 +199,17 @@ export function applyQuestPatch(cur: QuestRecord, patch: { status?: QuestStatus;
 export function assertClaimable(cur: QuestRecord): void {
   if (cur.status !== 'completed') throw new AppError('PRECONDITION_FAILED', '任务还没有完成，不能领取奖励');
   if (cur.claimedAt !== null) throw new AppError('PRECONDITION_FAILED', '奖励已经领取过了');
+}
+
+type Vals = { affinity: number; trust: number; hostility: number };
+const asVals = (v: unknown): Vals | null => {
+  const o = v as Partial<Vals> | null | undefined;
+  return o && typeof o.affinity === 'number' && typeof o.trust === 'number' && typeof o.hostility === 'number' ? { affinity: o.affinity, trust: o.trust, hostility: o.hostility } : null;
+};
+
+/** 从审计事件的差异里取出某条关系的前后值；该事件没有改变这条关系则返回 null */
+export function relationChangeOf(key: string, before: unknown, after: unknown): { before: Vals | null; after: Vals } | null {
+  const a = asVals(((after as { relations?: Record<string, unknown> } | null)?.relations ?? {})[key]);
+  if (!a) return null;
+  return { before: asVals(((before as { relations?: Record<string, unknown> } | null)?.relations ?? {})[key]), after: a };
 }

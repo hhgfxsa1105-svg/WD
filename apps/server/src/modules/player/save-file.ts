@@ -11,6 +11,8 @@ const WorldSchema = z
     memories: z.array(NpcMemorySchema).max(5000).default([]),
     /** 任务状态；缺省视为全部初始 */
     quests: z.array(QuestStateSchema).max(200).default([]),
+    /** 背包（物品 ID + 数量）；缺省表示不改动目标存档的背包 */
+    inventory: z.array(z.object({ itemId: z.string().min(1).max(64), quantity: z.number().int().min(0).max(9999) }).strict()).max(200).optional(),
   })
   .strict();
 export type SaveWorld = z.infer<typeof WorldSchema>;
@@ -24,12 +26,12 @@ export const SaveFileSchema = z.union([
 ]);
 export type SaveFile = z.infer<typeof SaveFileSchema>;
 
-export const buildSaveFile = (player: PlayerState, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestState[] }, now = new Date()): SaveFile => ({
+export const buildSaveFile = (player: PlayerState, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestState[]; inventory?: { itemId: string; quantity: number }[] }, now = new Date()): SaveFile => ({
   format: SAVE_FORMAT,
   schemaVersion: 2,
   exportedAt: now.toISOString(),
   player,
-  world: { npcs: world.npcs, relationships: world.relationships, memories: world.memories, quests: world.quests },
+  world: { npcs: world.npcs, relationships: world.relationships, memories: world.memories, quests: world.quests, ...(world.inventory ? { inventory: world.inventory } : {}) },
 });
 
 /** 解析存档文件；v1 的 world 为 null（导入时人物状态重置为初始） */

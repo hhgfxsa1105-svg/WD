@@ -15,7 +15,8 @@ import { createMockProvider } from '../src/modules/ai/mock.js';
 import { buildSaveFile, parseSaveFile } from '../src/modules/player/save-file.js';
 import { meetNpc } from '../src/modules/npc/memory.js';
 import { createMemoryGameStore } from '../src/modules/store/memory.js';
-import { createSqliteGameStore, ensureSeed, writePlayerState, writeWorldState } from '../src/modules/store/sqlite.js';
+import { importSave } from '../src/modules/player/import.js';
+import { createSqliteGameStore, ensureSeed } from '../src/modules/store/sqlite.js';
 import type { GameStore } from '../src/modules/store/types.js';
 import { mergeImportedWorld, snapshotWorld } from '../src/modules/store/world-rules.js';
 
@@ -423,8 +424,7 @@ describe('存档导出 / 导入包含任务', () => {
     const d2 = fresh();
     const s2 = createSqliteGameStore(d2.db);
     const parsed = parseSaveFile(text);
-    writePlayerState(d2.db, parsed.player);
-    writeWorldState(d2.db, mergeImportedWorld(parsed.world!));
+    importSave(d2.db, parsed);
     expect(s2.read((tx) => tx.quests())).toEqual(s1.read((tx) => tx.quests()));
     // 导入后继续玩：状态机仍然生效
     expect(code(() => s2.transact((tx) => tx.markQuestClaimed(Q1, T0)))).toBe('PRECONDITION_FAILED');

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, count, desc, eq, isNotNull } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import {
   ActionResponseSchema,
   LogRecordSchema,
@@ -19,8 +19,7 @@ import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/g
 import type { Db } from '../../db/connection.js';
 import { actions, aiCallLogs, auditEvents, cultivationJobs, inventory, npcMemories, npcRelationships, npcs, playerStates, quests, players, worldClock } from '../../db/schema.js';
 import { AppError } from '../../shared/errors.js';
-import type { ImportedMemory } from './world-rules.js';
-import { applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship } from './world-rules.js';
+import { relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, relationKey, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 /** 单机固定的玩家 ID */
@@ -159,6 +158,21 @@ function makeTx(db: Executor): GameTx {
         .run();
     },
 
+    relationHistory(npcId, target) {
+      const key = relationKey(npcId, target.type, target.id);
+      const rows = db
+        .select({ seq: auditEvents.seq, id: auditEvents.id, eventType: auditEvents.eventType, at: auditEvents.createdAt, beforeJson: auditEvents.beforeJson, afterJson: auditEvents.afterJson })
+        .from(auditEvents)
+        .where(sql`json_extract(${auditEvents.afterJson}, ${`$.relations."${key}"`}) is not null`)
+        .orderBy(asc(auditEvents.seq))
+        .all();
+      return rows.flatMap((r) => {
+        const c = relationChangeOf(key, r.beforeJson ? JSON.parse(r.beforeJson) : null, r.afterJson ? JSON.parse(r.afterJson) : null);
+        if (!c) return [];
+        const prev = r.eventType === 'npc.memory' ? db.select({ t: auditEvents.eventType }).from(auditEvents).where(eq(auditEvents.seq, r.seq - 1)).get() : undefined;
+        return [{ seq: r.seq, eventId: r.id, eventType: r.eventType, at: r.at, causeType: prev?.t ?? r.eventType, before: c.before, after: c.after }];
+      });
+    },
     quests: () => readQuests(db).map(toQuestState),
     updateQuest(id, patch, at) {
       assertQuest(id);
@@ -392,7 +406,8 @@ export function writePlayerState(db: Db, state: PlayerState): void {
 }
 
 /** 覆盖写入 NPC 状态与关系（导入存档用）；world 为 null 表示重置为初始。世界数据须已通过 mergeImportedWorld 校验 */
-export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships: Relationship[]; memories: ImportedMemory[]; quests: QuestRecord[] } | null): void {
+export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; inventory?: { itemId: string; quantity: number }[] | null } | null, importEventId?: string): void {
+  if (world?.memories.some((m) => m.type !== 'summary') && !importEventId) throw new Error('导入带事件的记忆需要提供导入事件 ID');
   const w = world ?? { npcs: initialNpcs(), relationships: initialRelationships(), memories: [], quests: initialQuestRecords() };
   db.transaction(
     (tx) => {
@@ -403,10 +418,17 @@ export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships
         tx.insert(npcs).values({ id: n.id, ...v }).onConflictDoUpdate({ target: npcs.id, set: { ...v, updatedAt: Date.now() } }).run();
       }
       for (const r of w.relationships) tx.insert(npcRelationships).values(r).run();
+      if (world?.inventory) {
+        // 存档带了背包：整体替换（没带则保持目标存档原样）
+        tx.delete(inventory).where(eq(inventory.playerId, PLAYER_ID)).run();
+        for (const it of world.inventory) tx.insert(inventory).values({ playerId: PLAYER_ID, itemId: it.itemId, quantity: it.quantity }).run();
+      }
       tx.delete(quests).run();
       for (const q of w.quests) tx.insert(quests).values(q).run();
       for (const m of w.memories) {
-        tx.insert(npcMemories).values({ id: randomUUID(), npcId: m.npcId, eventId: null, memoryType: 'summary', summary: m.summary, importance: m.importance, sourceCount: m.sourceCount, createdAt: m.createdAt }).run();
+        // 记忆原样保留；原来引用的事件属于旧存档，改为引用本次导入事件（合并摘要本来就没有事件）
+        const eventId = m.type === 'summary' ? null : importEventId!;
+        tx.insert(npcMemories).values({ id: randomUUID(), npcId: m.npcId, eventId, memoryType: m.type, summary: m.summary, importance: m.importance, sourceCount: m.sourceCount, createdAt: m.createdAt }).run();
       }
     },
     { behavior: 'immediate' },
