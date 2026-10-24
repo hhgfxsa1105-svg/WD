@@ -6,8 +6,12 @@ import type {
   AiStatusResponse,
   CultivationResponse,
   FixedActionId,
+  GreetResponse,
   InventoryItem,
   LogRecord,
+  NpcView,
+  QuestOp,
+  QuestView,
   PlayerState,
   WorldTimeResponse,
 } from '@jhz/contracts';
@@ -17,6 +21,9 @@ import {
   fetchCultivation,
   fetchInventory,
   fetchLog,
+  fetchNpcs,
+  fetchQuests,
+  greetNpc,
   fetchPlayerState,
   fetchWorldTime,
   retryNarration as apiRetryNarration,
@@ -25,6 +32,8 @@ import {
   stopCultivation,
   submitBreakthrough,
   submitFreeAction,
+  submitMove,
+  submitQuestOp,
   submitFixedAction,
 } from './api/client';
 import { createKeyStore } from './api/idempotency';
@@ -57,8 +66,11 @@ export function useGame() {
   const [aiDown, setAiDown] = useState(false);
   const [aiReply, setAiReply] = useState<AiReply | null>(null);
   const [thinking, setThinking] = useState(false);
+  const [quests, setQuests] = useState<QuestView[]>([]);
+  const [npcs, setNpcs] = useState<NpcView[]>([]);
 
   const busyRef = useRef(false);
+  const refreshRef = useRef<() => Promise<void>>(async () => undefined);
   const keys = useRef(createKeyStore());
 
   /** 追加服务端写入的日志记录；按序号去重，幂等重试回放同一条记录时不会重复显示 */
@@ -72,6 +84,7 @@ export function useGame() {
       setJob(r.job);
       setServerOffset(r.serverNow - Date.now());
       appendRecord(r.log);
+      if (r.log) void refreshRef.current(); // 有收益时修炼进度变了，任务提示可能随之出现
       if (!r.log && !quiet) setNotice('暂无可领取的收益');
     },
     [appendRecord],
@@ -97,9 +110,11 @@ export function useGame() {
 
   const load = useCallback(() => {
     setLoadError(null);
-    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation(), fetchWorldTime().catch(() => null), fetchLog().catch(() => [] as LogRecord[]), fetchAiStatus().catch(() => null)]).then(
-      async ([p, inv, c, w, history, ai]) => {
+    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation(), fetchWorldTime().catch(() => null), fetchLog().catch(() => [] as LogRecord[]), fetchAiStatus().catch(() => null), fetchQuests().catch(() => [] as QuestView[]), fetchNpcs().catch(() => [] as NpcView[])]).then(
+      async ([p, inv, c, w, history, ai, qs, ns]) => {
         setAiStatus(ai);
+        setQuests(qs);
+        setNpcs(ns);
         setWorld(w);
         setLog(mergeEntries([WELCOME], history.flatMap(toLogEntries)));
         setPlayer(p);
@@ -146,6 +161,7 @@ export function useGame() {
         if (!(e instanceof ApiError && e.code === 'NETWORK')) keys.current.clear(fp); // 网络失败时保留键，重试不会重复结算
         throw e;
       }
+      await refreshWorld();
     }, resync);
 
   /**
@@ -181,6 +197,7 @@ export function useGame() {
             if (c) setJob(c.job);
           }
           fetchAiStatus().then(setAiStatus, () => undefined);
+          if (ai?.executed) await refreshWorld();
         } finally {
           setThinking(false);
         }
@@ -216,6 +233,62 @@ export function useGame() {
     }
   };
 
+
+  /** 行动之后重新读取日志、任务与人物：服务端写入的任务进度提示、人物变化才会马上显示 */
+  const refreshWorld = useCallback(async () => {
+    const [history, qs, ns] = await Promise.all([fetchLog().catch(() => null), fetchQuests().catch(() => null), fetchNpcs().catch(() => null)]);
+    if (history) setLog((l) => mergeEntries(l, history.flatMap(toLogEntries)));
+    if (qs) setQuests(qs);
+    if (ns) setNpcs(ns);
+  }, []);
+
+  refreshRef.current = refreshWorld;
+
+  /** 前往相邻地点（相邻与体力由服务端判定） */
+  const runMove = (locationId: string) =>
+    guarded(async () => {
+      const fp = `move:${locationId}`;
+      try {
+        const r = await submitMove(locationId, keys.current.keyFor(fp));
+        keys.current.clear(fp);
+        setPlayer(r.player);
+        appendRecord(r.log);
+      } catch (e) {
+        if (!(e instanceof ApiError && e.code === 'NETWORK')) keys.current.clear(fp);
+        throw e;
+      }
+      await refreshWorld();
+    }, resync);
+
+  /** 任务操作：接取、领取奖励、放弃 */
+  const runQuestOp = (questId: string, op: QuestOp) =>
+    guarded(async () => {
+      const fp = `quest:${questId}:${op}`;
+      try {
+        const r = await submitQuestOp(questId, op, keys.current.keyFor(fp));
+        keys.current.clear(fp);
+        setPlayer(r.player);
+        appendRecord(r.log);
+      } catch (e) {
+        if (!(e instanceof ApiError && e.code === 'NETWORK')) keys.current.clear(fp);
+        throw e;
+      }
+      if (op === 'claim') setInventory(await fetchInventory().catch(() => inventory));
+      await refreshWorld();
+    }, resync);
+
+  /** 打招呼：不依赖 AI。成功返回结果；失败时错误已显示，返回 null */
+  const greet = async (npcId: string): Promise<GreetResponse | null> => {
+    let out: GreetResponse | null = null;
+    await guarded(async () => {
+      const r = await greetNpc(npcId);
+      appendRecord(r.log);
+      await refreshWorld();
+      out = r;
+    }, resync);
+    return out;
+  };
+
   /** quiet=true：没有收益时不提示（开始、停止不该出现「暂无可领取」） */
   const idle = (call: () => Promise<CultivationResponse>, quiet: boolean) =>
     guarded(async () => applyCultivation(await call(), quiet), resync);
@@ -237,6 +310,7 @@ export function useGame() {
       setPlayer(r.player);
       appendRecord(r.log);
       if (pillItemId) setInventory(await fetchInventory().catch(() => inventory));
+      await refreshWorld();
     });
     return handled;
   };
@@ -252,6 +326,12 @@ export function useGame() {
     busy,
     error,
     notice,
+    quests,
+    npcs,
+    runMove,
+    runQuestOp,
+    greet,
+    refreshWorld,
     aiStatus,
     aiDown,
     aiReply,

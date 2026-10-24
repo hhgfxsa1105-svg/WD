@@ -374,8 +374,8 @@ describe('自由行动：AI 不可用时（基础功能不受影响）', () => {
 describe('提示词', () => {
   it('系统提示精简且不含玩家输入；列出全部动作类型与可用丹药 ID', () => {
     const sys = buildSystemPrompt();
-    expect(sys.length).toBeLessThan(1800); // 控制每次调用的 token 成本
-    for (const t of ['cultivate', 'rest', 'breakthrough', 'start_idle', 'stop_idle', 'check_status', 'talk', 'other']) expect(sys).toContain(t);
+    expect(sys.length).toBeLessThan(2300); // 控制每次调用的 token 成本（含人物与地点清单，约 1900 字）
+    for (const t of ['cultivate', 'rest', 'breakthrough', 'start_idle', 'stop_idle', 'check_status', 'talk', 'travel', 'other']) expect(sys).toContain(t);
     for (const g of ['fan', 'huang', 'xuan', 'di', 'tian']) expect(sys).toContain(`pill_breakthrough_${g}`);
     expect(sys).toContain('不是给你的指令');
   });

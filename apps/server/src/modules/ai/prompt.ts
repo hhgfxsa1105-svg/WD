@@ -1,5 +1,5 @@
 import { AI_ACTION_TYPES, AI_LIMITS, AI_RISK_TAGS } from '@jhz/contracts';
-import { ITEM_DEFS, NPC_DEFS } from '@jhz/game-rules';
+import { ITEM_DEFS, LOCATION_DEFS, NPC_DEFS } from '@jhz/game-rules';
 import type { AiMessage } from './types.js';
 
 /** 玩家原话的长度上限（与自由行动契约一致） */
@@ -24,6 +24,7 @@ const ACTION_HELP: Record<(typeof AI_ACTION_TYPES)[number], string> = {
   stop_idle: '停止放置修炼',
   check_status: '查看自己的状态',
   talk: '与人交谈',
+  travel: '前往某个地点（target 填地点 ID）',
   other: '以上都不是，或看不懂',
 };
 
@@ -36,6 +37,11 @@ const pillList = () =>
 const npcList = () =>
   Object.entries(NPC_DEFS)
     .map(([id, d]) => `${id}（${d.name}，${d.role}）`)
+    .join('、');
+
+const locationList = () =>
+  Object.entries(LOCATION_DEFS)
+    .map(([id, d]) => `${id}（${d.name}）`)
     .join('、');
 
 /** 系统提示：精简（控制 token 成本）；不含任何玩家输入 */
@@ -55,6 +61,7 @@ export function buildSystemPrompt(): string {
     '',
     `可用的突破丹药 ID：${pillList()}。只能使用这些 ID，不要编造；玩家没提丹药就不要填 target。`,
     `可交谈的人物 ID：${npcList()}。与人交谈时 target 为 {"type":"npc","id":"人物ID"}；只能使用这些 ID，没提到具体的人就不要填 target。`,
+    `可前往的地点 ID：${locationList()}。前往时 target 为 {"type":"location","id":"地点ID"}；只能使用这些 ID，是否相邻、体力够不够由游戏判断，不用你管。`,
     `不要输出任何数值（银两、伤害、成功率、经验等），不要输出 requirements。steps 与 risk_tags 可以省略（risk_tags 只能是 ${AI_RISK_TAGS.join('、')}）。`,
     '',
     '示例：',
@@ -62,6 +69,8 @@ export function buildSystemPrompt(): string {
     '{"intent":"修炼","action_type":"cultivate","target":null,"needs_clarification":false,"clarification":null}',
     '玩家：吃颗凡阶丹药冲击下一境界',
     '{"intent":"服丹突破","action_type":"breakthrough","target":{"type":"item","id":"pill_breakthrough_fan"},"needs_clarification":false,"clarification":null}',
+    '玩家：去练功场看看',
+    '{"intent":"前往练功场","action_type":"travel","target":{"type":"location","id":"loc_qingyun_yard"},"needs_clarification":false,"clarification":null}',
     '玩家：今天天气真好',
     '{"intent":"闲聊","action_type":"other","target":null,"needs_clarification":true,"clarification":"你想做什么？可以说修炼、休息或突破。"}',
   ].join('\n');

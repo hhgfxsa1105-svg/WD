@@ -65,7 +65,7 @@ export function toLogEntries(r: LogRecord): LogEntry[] {
     return entries;
   }
 
-  if (r.type === 'system') return [{ ...base, text: r.narrative, chips: [], sub: r.note ?? undefined, system: true }];
+  if (r.type === 'system') return [{ ...base, text: r.narrative, chips: formatChanges(r.changes), sub: r.note ?? undefined, system: true }];
 
   return [{ ...base, text: r.narrative, chips: formatChanges(r.changes) }];
 }

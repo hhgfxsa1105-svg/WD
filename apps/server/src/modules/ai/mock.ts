@@ -1,4 +1,4 @@
-import { NPC_DEFS } from '@jhz/game-rules';
+import { LOCATION_DEFS, NPC_DEFS } from '@jhz/game-rules';
 import { AiError, type AiProvider, type AiRequest, type AiResponse } from './types.js';
 
 /** 一步脚本：直接给文本、给完整响应、抛出错误、或按请求动态决定；delayMs 用于模拟慢响应 */
@@ -57,6 +57,10 @@ export function createMockProvider(opts: MockOptions = {}): MockProvider {
   };
 }
 
+/** 文字里提到的地点（按名字或常用叫法） */
+const PLACE_ALIASES: Record<string, RegExp> = { loc_qingyun_gate: /山门/, loc_qingyun_yard: /练功场|演武场/, loc_qingyun_hall: /大殿/, loc_qingyun_library: /藏经阁|书阁/ };
+const placeOf = (text: string): keyof typeof LOCATION_DEFS | null => (Object.entries(PLACE_ALIASES).find(([, re]) => re.test(text))?.[0] as keyof typeof LOCATION_DEFS | undefined) ?? null;
+
 const plan = (action: string, extra: Record<string, unknown> = {}) =>
   JSON.stringify({ intent: '', action_type: action, target: null, steps: [], risk_tags: [], narrative_context: '', needs_clarification: false, clarification: null, ...extra });
 
@@ -77,7 +81,9 @@ export function createKeywordMockProvider(model = 'keyword-mock'): AiProvider {
         out = plan('breakthrough', { intent: '尝试突破', target: pill ? { type: 'item', id: 'pill_breakthrough_fan' } : null });
       } else if (/(停止|结束).*(修炼|挂机)|不.*(修炼|挂机)了/.test(text)) out = plan('stop_idle', { intent: '停止放置修炼' });
       else if (/挂机|放置|(开始|继续).*修炼/.test(text)) out = plan('start_idle', { intent: '开始放置修炼' });
-      else if (/修炼|打坐|练功|修行/.test(text)) out = plan('cultivate', { intent: '修炼' });
+      else if (/去|前往|走到|到达|赶往|回到|上山|下山/.test(text) && placeOf(text)) {
+        out = plan('travel', { intent: '前往' + LOCATION_DEFS[placeOf(text)!].name, target: { type: 'location', id: placeOf(text) } });
+      } else if (/修炼|打坐|练功|修行/.test(text)) out = plan('cultivate', { intent: '修炼' });
       else if (/休息|歇|睡/.test(text)) out = plan('rest', { intent: '休息' });
       else if (/状态|属性|查看|看看自己/.test(text)) out = plan('check_status', { intent: '查看状态' });
       else if (/聊|谈|说话|问问|拜见|招呼|问候|拜访|找|见/.test(text)) {

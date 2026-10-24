@@ -3,6 +3,7 @@ import {
   AiStatusResponseSchema,
   AuditActionResponseSchema,
   InventoryResponseSchema,
+  GreetResponseSchema,
   NpcListResponseSchema,
   NpcMemoryListResponseSchema,
   RelationExplainResponseSchema,
@@ -22,6 +23,7 @@ import type { GameStore } from './store/types.js';
 import type { Clock } from '../shared/runtime.js';
 import type { AiGateway } from './ai/gateway.js';
 import { explainRelation } from './npc/explain.js';
+import { meetNpc } from './npc/memory.js';
 import { questViews } from './quest/service.js';
 import type { Narrator } from './narrative/service.js';
 
@@ -69,6 +71,13 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
       }),
     }),
   );
+
+  // 打招呼：不依赖 AI。第一次见面留下记忆并微调关系；已相识则不改任何状态（天然幂等）。NPC 必须在玩家所在地点
+  app.post<{ Params: { id: string } }>('/api/v1/world/npcs/:id/greet', async (req) => {
+    if (!isNpcId(req.params.id)) throw new AppError('NOT_FOUND', '没有这个人物');
+    const r = meetNpc(store, req.params.id, clock.now());
+    return GreetResponseSchema.parse(r.firstMeeting ? { firstMeeting: true, narrative: r.narrative, log: r.log } : { firstMeeting: false, narrative: null, log: null });
+  });
 
   // 解释某个 NPC 对某对象（默认玩家）的关系数值来源：初始值 + 审计事件里的每次变化 = 当前值（只读）
   app.get<{ Params: { id: string } }>('/api/v1/world/npcs/:id/relation', async (req) => {

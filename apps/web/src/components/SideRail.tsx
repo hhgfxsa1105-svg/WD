@@ -2,6 +2,8 @@ import type { ReactNode } from 'react';
 
 interface Props {
   unreadMessages: boolean;
+  /** 有可接取或可领取奖励的任务 */
+  questAlert?: boolean;
   onOpen: (name: string) => void;
 }
 
@@ -43,7 +45,7 @@ const ITEMS: { name: string; icon: ReactNode; gap?: boolean }[] = [
   },
 ];
 
-export function SideRail({ unreadMessages, onOpen }: Props) {
+export function SideRail({ unreadMessages, questAlert = false, onOpen }: Props) {
   return (
     <nav className="rail" aria-label="功能入口">
       {ITEMS.map((it) => (
@@ -57,6 +59,7 @@ export function SideRail({ unreadMessages, onOpen }: Props) {
           {it.icon}
           <span className="tip">{it.name}</span>
           {it.name === '消息' && unreadMessages && <i className="badge" />}
+          {it.name === '任务' && questAlert && <i className="badge" data-testid="quest-badge" />}
         </button>
       ))}
     </nav>

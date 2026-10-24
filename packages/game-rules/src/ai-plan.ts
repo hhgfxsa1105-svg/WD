@@ -110,6 +110,7 @@ const ACTION_SYNONYMS: [RegExp, AiActionType][] = [
   [/^(stop_idle|idle_stop|stop_cultivation|停止挂机|停止放置修炼|停止修炼|结束修炼)$/, 'stop_idle'],
   [/^(check_status|status|inspect_self|查看状态|查看|状态|属性)$/, 'check_status'],
   [/^(talk|chat|speak|dialogue|交谈|对话|聊天|说话)$/, 'talk'],
+  [/^(travel|move|go|goto|go_to|walk|前往|去|移动|走|赶路|去往)$/, 'travel'],
   [/^(other|unknown|none|其他|不明)$/, 'other'],
 ];
 
@@ -322,6 +323,10 @@ export type TargetCheck = { ok: true } | { ok: false; reason: 'UNKNOWN_ENTITY' |
 /** 校验方案里的目标；不通过时给出一句话的澄清，调用方据此走澄清流程而不是执行 */
 export function checkPlanTarget(plan: AiActionPlan, catalog: EntityCatalog = defaultCatalog): TargetCheck {
   const t = plan.target;
+  if (plan.action_type === 'travel') {
+    if (!t) return { ok: false, reason: 'TARGET_NOT_ALLOWED', clarification: '你想去哪里？' };
+    if (t.type !== 'location') return { ok: false, reason: 'TARGET_NOT_ALLOWED', clarification: '只能前往某个地点，你想去哪里？' };
+  }
   if (!t) return { ok: true };
   const exists = t.type === 'item' ? catalog.itemExists(t.id) : t.type === 'npc' ? catalog.npcExists(t.id) : catalog.locationExists(t.id);
   if (!exists) return { ok: false, reason: 'UNKNOWN_ENTITY', clarification: '我没找到你说的那个对象，可以说得更具体些吗？' };

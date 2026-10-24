@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LogRecordSchema } from './log.js';
 import { LocationRefSchema } from './player.js';
 
 export const NPC_STATUSES = ['active', 'away', 'resting'] as const;
@@ -134,3 +135,14 @@ export const RelationExplainResponseSchema = z
   })
   .strict();
 export type RelationExplainResponse = z.infer<typeof RelationExplainResponseSchema>;
+
+/** 打招呼的结果：第一次见面留下「初次相识」记忆并微调关系；之后再打招呼不改任何状态 */
+export const GreetResponseSchema = z
+  .object({
+    firstMeeting: z.boolean(),
+    narrative: z.string().max(200).nullable(),
+    /** 第一次见面写入的玩家日志；已相识时为 null */
+    log: LogRecordSchema.nullable(),
+  })
+  .strict();
+export type GreetResponse = z.infer<typeof GreetResponseSchema>;

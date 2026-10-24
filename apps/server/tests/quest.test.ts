@@ -476,3 +476,81 @@ describe('存档导出 / 导入包含任务', () => {
     expect(createMemoryGameStore().read((tx) => tx.quests()).map((x) => x.id).sort()).toEqual(Object.keys(QUEST_DEFS).sort());
   });
 });
+
+describe('打招呼接口（不依赖 AI）', () => {
+  const greet = (g: Awaited<ReturnType<typeof game>>, id: string) => g.app.inject({ method: 'POST', url: `/api/v1/world/npcs/${id}/greet` });
+
+  it('AI 未开启也能认人：第一次留下记忆、微调关系、写日志；第二次不改任何状态', async () => {
+    const g = await game(); // 没有配置 AI
+    const first = (await greet(g, GUARD)).json();
+    expect(first).toMatchObject({ firstMeeting: true, narrative: expect.stringContaining('赵铁牛'), log: { type: 'system' } });
+    expect(g.store.read((tx) => tx.memories(GUARD)).map((m) => m.type)).toEqual(['met']);
+    const before = g.store.read((tx) => ({ r: tx.relationships(), m: tx.memories(GUARD), l: tx.recentLog(50).length }));
+    expect((await greet(g, GUARD)).json()).toEqual({ firstMeeting: false, narrative: null, log: null });
+    expect(g.store.read((tx) => ({ r: tx.relationships(), m: tx.memories(GUARD), l: tx.recentLog(50).length }))).toEqual(before);
+  });
+
+  it('可以完成任务第一步；不在场 422；未知人物 404；只接受 POST', async () => {
+    const g = await game();
+    g.ok(await g.quest(Q1, 'accept'));
+    await greet(g, GUARD);
+    expect((await g.view(Q1)).steps.map((s) => s.done)).toEqual([true, false, false]);
+    expect((await greet(g, SISTER)).statusCode).toBe(422); // 大师姐在练功场
+    expect((await greet(g, 'npc_nobody')).statusCode).toBe(404);
+    expect((await g.app.inject({ method: 'GET', url: `/api/v1/world/npcs/${GUARD}/greet` })).statusCode).toBe(404);
+  });
+});
+
+describe('AI 的 travel 意图', () => {
+  const plan = (target: unknown) => JSON.stringify({ intent: '前往', action_type: 'travel', target, steps: [], risk_tags: [], narrative_context: '', needs_clarification: false, clarification: null });
+  const free = (g: Awaited<ReturnType<typeof game>>, input: string, key = 'travel-key-0001') => g.app.inject({ method: 'POST', url: '/api/v1/actions', payload: { kind: 'free', idempotencyKey: key, input } });
+
+  it('说「去练功场」：走与点地图相同的结算管线（体力 −3、审计 action.free.travel、日志）', async () => {
+    const g = await game({ steps: [plan({ type: 'location', id: 'loc_qingyun_yard' })] });
+    const res = g.ok(await free(g, '去练功场看看'));
+    expect(res.ai).toMatchObject({ actionType: 'travel', executed: true });
+    expect(res.player.location.id).toBe('loc_qingyun_yard');
+    expect(res.player.stamina).toBe(50 - MOVE_STAMINA_COST);
+    const audit = AuditActionResponseSchema.parse((await g.app.inject({ method: 'GET', url: `/api/v1/audit/actions/${res.actionId}` })).json());
+    expect(audit.events[0]!.eventType).toBe('action.free.travel');
+  });
+
+  it('服务端照样判定：不相邻、体力不足被拒绝（状态不变）；原话重放不再调用 AI', async () => {
+    const g = await game({ steps: [plan({ type: 'location', id: 'loc_qingyun_hall' }), plan({ type: 'location', id: 'loc_qingyun_yard' })] });
+    const before = g.store.read((tx) => tx.player());
+    g.err(await free(g, '去大殿', 'travel-key-0002'), 422);
+    expect(g.store.read((tx) => tx.player())).toEqual(before);
+    const ok1 = g.ok(await free(g, '去练功场', 'travel-key-0003'));
+    expect(g.ok(await free(g, '去练功场', 'travel-key-0003'))).toEqual(ok1); // 重放
+  });
+
+  it.each([
+    ['没说去哪', null, /去哪里/],
+    ['目标是人而不是地点', { type: 'npc', id: GUARD }, /只能前往/],
+    ['编造的地点', { type: 'location', id: 'loc_nowhere' }, /没找到/],
+  ])('澄清：%s（不执行、不改状态）', async (_n, target, msg) => {
+    const g = await game({ steps: [plan(target)] });
+    const before = g.store.read((tx) => tx.player());
+    const res = g.ok(await free(g, '去个地方'));
+    expect(res.ai).toMatchObject({ executed: false });
+    expect(res.ai!.clarification).toMatch(msg);
+    expect(g.store.read((tx) => tx.player())).toEqual(before);
+  });
+
+  it('提示词列出全部地点 ID；关键词模拟能按名字或常用叫法认出地点', async () => {
+    const { buildSystemPrompt } = await import('../src/modules/ai/prompt.js');
+    const { createKeywordMockProvider } = await import('../src/modules/ai/mock.js');
+    const { LOCATION_DEFS } = await import('@jhz/game-rules');
+    for (const [id, d] of Object.entries(LOCATION_DEFS)) {
+      expect(buildSystemPrompt()).toContain(id);
+      expect(buildSystemPrompt()).toContain(d.name);
+    }
+    const mock = createKeywordMockProvider();
+    const ask = async (t: string) => JSON.parse((await mock.complete({ purpose: 'parse', messages: [{ role: 'user', content: t }] })).text);
+    expect((await ask('去练功场')).target).toEqual({ type: 'location', id: 'loc_qingyun_yard' });
+    expect((await ask('前往藏经阁')).target).toEqual({ type: 'location', id: 'loc_qingyun_library' });
+    expect((await ask('回到山门')).target).toEqual({ type: 'location', id: 'loc_qingyun_gate' });
+    expect((await ask('去找掌门聊聊')).action_type).toBe('talk'); // 提到人不提地点：仍是交谈
+    expect((await ask('去哪里好呢')).action_type).not.toBe('travel');
+  });
+});

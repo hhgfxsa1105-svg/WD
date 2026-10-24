@@ -1,6 +1,11 @@
 import {
   ActionResponseSchema,
   AiStatusResponseSchema,
+  GreetResponseSchema,
+  NpcListResponseSchema,
+  NpcMemoryListResponseSchema,
+  QuestListResponseSchema,
+  RelationExplainResponseSchema,
   CultivationResponseSchema,
   ErrorResponseSchema,
   InventoryResponseSchema,
@@ -9,6 +14,12 @@ import {
   WorldTimeResponseSchema,
   type ActionResponse,
   type AiStatusResponse,
+  type GreetResponse,
+  type NpcMemory,
+  type NpcView,
+  type QuestOp,
+  type QuestView,
+  type RelationExplainResponse,
   type CultivationResponse,
   type FixedActionId,
   type InventoryItem,
@@ -91,3 +102,22 @@ export const stopCultivation = (): Promise<CultivationResponse> => postJson('/ap
 export const fetchWorldTime = (): Promise<WorldTimeResponse> => request('/api/v1/world/time', WorldTimeResponseSchema);
 
 export const fetchLog = async (limit = 100): Promise<LogRecord[]> => (await request(`/api/v1/log?limit=${limit}`, LogResponseSchema)).entries;
+
+export const submitMove = (locationId: string, idempotencyKey = newIdempotencyKey()): Promise<ActionResponse> =>
+  submit({ kind: 'move', idempotencyKey, locationId });
+
+export const submitQuestOp = (questId: string, op: QuestOp, idempotencyKey = newIdempotencyKey()): Promise<ActionResponse> =>
+  submit({ kind: 'quest', idempotencyKey, questId, op });
+
+export const fetchQuests = async (): Promise<QuestView[]> => (await request('/api/v1/quests', QuestListResponseSchema)).quests;
+export const fetchNpcs = async (): Promise<NpcView[]> => (await request('/api/v1/world/npcs', NpcListResponseSchema)).npcs;
+
+/** 对话上下文用的精选记忆（条数与字数受限） */
+export const fetchNpcMemories = async (npcId: string): Promise<NpcMemory[]> =>
+  (await request(`/api/v1/world/npcs/${encodeURIComponent(npcId)}/memories?context=1`, NpcMemoryListResponseSchema)).memories;
+
+export const fetchRelation = (npcId: string): Promise<RelationExplainResponse> =>
+  request(`/api/v1/world/npcs/${encodeURIComponent(npcId)}/relation`, RelationExplainResponseSchema);
+
+/** 打招呼：不依赖 AI；第一次见面留下记忆，之后再打招呼不改状态 */
+export const greetNpc = (npcId: string): Promise<GreetResponse> => postJson(`/api/v1/world/npcs/${encodeURIComponent(npcId)}/greet`, GreetResponseSchema);

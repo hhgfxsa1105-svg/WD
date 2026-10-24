@@ -14,7 +14,8 @@ export const AI_ACTION_TYPES = [
   'start_idle', // 开始放置修炼
   'stop_idle', // 停止放置修炼
   'check_status', // 查看状态
-  'talk', // 与人交谈（NPC 在 S4 开放，目前只会得到澄清）
+  'talk', // 与人交谈（第一次见面会留下记忆）
+  'travel', // 前往相邻地点（目标为地点；相邻与体力由服务端判定）
   'other', // 无法归类或暂不支持，进入澄清
 ] as const;
 export const AiActionTypeSchema = z.enum(AI_ACTION_TYPES);

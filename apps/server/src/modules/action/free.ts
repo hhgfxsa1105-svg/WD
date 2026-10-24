@@ -142,6 +142,11 @@ export function createFreeActionService({ store, actions, cultivation, ai, clock
         const base = { kind: 'fixed' as const, idempotencyKey: req.idempotencyKey, actionId: plan.action_type };
         return settle(actions.executeFresh(base, { fingerprint, ai: info(true), eventType: `action.free.${plan.action_type}` }));
       }
+      case 'travel': {
+        // 目标已通过目录校验是地点；相邻与体力由服务端按当前状态判定（与点地图走同一条结算管线）
+        const base = { kind: 'move' as const, idempotencyKey: req.idempotencyKey, locationId: plan.target!.id };
+        return settle(actions.executeFresh(base, { fingerprint, ai: info(true), eventType: 'action.free.travel' }));
+      }
       case 'breakthrough': {
         const pill = plan.target?.id ?? null;
         const base = { kind: 'breakthrough' as const, idempotencyKey: req.idempotencyKey, pillItemId: pill };
