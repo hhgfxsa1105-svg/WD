@@ -80,7 +80,7 @@ export function createKeywordMockProvider(model = 'keyword-mock'): AiProvider {
       else if (/修炼|打坐|练功|修行/.test(text)) out = plan('cultivate', { intent: '修炼' });
       else if (/休息|歇|睡/.test(text)) out = plan('rest', { intent: '休息' });
       else if (/状态|属性|查看|看看自己/.test(text)) out = plan('check_status', { intent: '查看状态' });
-      else if (/聊|谈|说话|问问|拜见|找|见/.test(text)) {
+      else if (/聊|谈|说话|问问|拜见|招呼|问候|拜访|找|见/.test(text)) {
         const alias: Record<string, RegExp> = { npc_master_qingyun: /掌门|青云真人/, npc_senior_sister: /大师姐|苏晚晴/, npc_gate_guard: /守门|赵铁牛/, npc_librarian: /执事|陆先生/ };
         const id = Object.entries(NPC_DEFS).find(([k, d]) => text.includes(d.name) || alias[k]?.test(text))?.[0];
         out = plan('talk', { intent: '与人交谈', target: id ? { type: 'npc', id } : null });

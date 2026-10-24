@@ -359,6 +359,8 @@ describe('与人交谈（自由行动）：目标必须是存在的 NPC', () => 
     expect((await ask('去找掌门聊聊')).target).toEqual({ type: 'npc', id: 'npc_master_qingyun' });
     expect((await ask('跟苏晚晴说说话')).target).toEqual({ type: 'npc', id: 'npc_senior_sister' });
     expect((await ask('找人聊聊')).target).toBeNull();
+    expect((await ask('跟守门弟子打个招呼')).target).toEqual({ type: 'npc', id: 'npc_gate_guard' });
+    expect((await ask('去拜访陆先生')).target).toEqual({ type: 'npc', id: 'npc_librarian' });
   });
 });
 
