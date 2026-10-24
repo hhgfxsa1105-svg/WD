@@ -62,7 +62,7 @@ export async function buildApp({
     clockBehindMs,
     ai,
     narrator,
-    free: createFreeActionService({ store, actions, cultivation, ai, narrator }),
+    free: createFreeActionService({ store, actions, cultivation, ai, clock, narrator }),
   });
 
 

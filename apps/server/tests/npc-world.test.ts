@@ -131,8 +131,9 @@ describe('初始世界与升级', () => {
       const journalPath = join(tmp, 'meta', '_journal.json');
       const journal = JSON.parse(readFileSync(journalPath, 'utf8'));
       const full = journal.entries as { tag: string }[];
-      expect(full.at(-1)?.tag).toContain('npc_world');
-      journal.entries = full.slice(0, -1); // 去掉本任务的迁移，模拟 T-016 时期的数据库
+      const cut = full.findIndex((e) => e.tag.includes('npc_world'));
+      expect(cut).toBeGreaterThan(0);
+      journal.entries = full.slice(0, cut); // 去掉 NPC 相关的全部迁移，模拟 T-016 时期的数据库
       writeFileSync(journalPath, JSON.stringify(journal));
 
       const d = openDatabase(':memory:');
@@ -299,10 +300,22 @@ describe('与人交谈（自由行动）：目标必须是存在的 NPC', () => 
     return res;
   };
 
-  it('NPC 在同一地点：见礼，不改任何状态', async () => {
-    const s = await setup([plan({ type: 'npc', id: 'npc_gate_guard' })]);
-    const res = await unchanged(s, () => s.talk('跟守门弟子打个招呼'));
-    expect(res.ai?.clarification).toContain('赵铁牛（守门弟子）');
+  it('NPC 在同一地点：第一次见面留下记忆并微调关系；再次打招呼不改任何状态', async () => {
+    const s = await setup([plan({ type: 'npc', id: 'npc_gate_guard' }), plan({ type: 'npc', id: 'npc_gate_guard' })]);
+    const guard = () => s.store.read((tx) => tx.relationships().find((r) => r.npcId === 'npc_gate_guard' && r.targetType === 'player')!);
+    const before = guard();
+    const first = await s.talk('跟守门弟子打个招呼');
+    expect(first.ai?.executed).toBe(true);
+    expect(first.narrative).toContain('赵铁牛（守门弟子）');
+    expect(first.log).toMatchObject({ type: 'system' });
+    expect(guard()).toMatchObject({ affinity: before.affinity + 3, trust: before.trust + 2 });
+    const mems = s.store.read((tx) => tx.memories('npc_gate_guard'));
+    expect(mems).toHaveLength(1);
+    expect(mems[0]).toMatchObject({ type: 'met', summary: '你与赵铁牛初次相识。', importance: 6 });
+    // 再次打招呼：不再改变任何状态
+    const second = await unchanged(s, () => s.talk('再跟守门弟子打个招呼'));
+    expect(second.ai?.clarification).toContain('赵铁牛（守门弟子）');
+    expect(s.store.read((tx) => tx.memories('npc_gate_guard'))).toHaveLength(1);
   });
 
   it('NPC 在别处：告知其所在地点', async () => {
@@ -329,8 +342,9 @@ describe('与人交谈（自由行动）：目标必须是存在的 NPC', () => 
   it('NPC 被移到玩家所在地点后可以见礼', async () => {
     const s = await setup([plan({ type: 'npc', id: 'npc_librarian' })]);
     s.store.transact((tx) => tx.moveNpc('npc_librarian', 'loc_qingyun_gate'));
-    const res = await unchanged(s, () => s.talk('找陆先生'));
-    expect(res.ai?.clarification).toContain('陆先生（藏经阁执事）');
+    const res = await s.talk('找陆先生');
+    expect(res.ai?.executed).toBe(true);
+    expect(res.narrative).toContain('陆先生（藏经阁执事）');
   });
 
   it('提示词列出全部人物 ID；关键词模拟能按名字或称呼认人', async () => {
@@ -359,7 +373,7 @@ describe('存档导出 / 导入包含人物状态', () => {
       tx.adjustRelationship('npc_senior_sister', { type: 'player', id: 'player_1' }, { affinity: 13, hostility: 4 });
       tx.adjustRelationship('npc_librarian', { type: 'npc', id: 'npc_master_qingyun' }, { trust: 9 });
     });
-    const text = JSON.stringify(buildSaveFile(s1.read((tx) => tx.player()), worldOf(s1)));
+    const text = JSON.stringify(buildSaveFile(s1.read((tx) => tx.player()), { ...worldOf(s1), memories: [] }));
 
     const d2 = fresh();
     const s2 = createSqliteGameStore(d2.db);
@@ -397,7 +411,7 @@ describe('存档导出 / 导入包含人物状态', () => {
     expect(merged.relationships).toHaveLength(INITIAL_RELATIONS.length);
   });
 
-  const good = () => buildSaveFile(createInitialPlayer(), worldOf(createMemoryGameStore()));
+  const good = () => buildSaveFile(createInitialPlayer(), { ...worldOf(createMemoryGameStore()), memories: [] });
   it.each([
     ['未知 NPC', (w: ReturnType<typeof good>) => ((w as { world: { npcs: unknown[] } }).world.npcs = [{ id: 'npc_nobody', locationId: 'loc_qingyun_gate', status: 'active', goals: [] }]), /未知人物/],
     ['未知地点', (w: ReturnType<typeof good>) => ((w as { world: { npcs: unknown[] } }).world.npcs = [{ id: 'npc_gate_guard', locationId: 'loc_nowhere', status: 'active', goals: [] }]), /未知地点/],

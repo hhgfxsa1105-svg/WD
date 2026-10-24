@@ -1,5 +1,5 @@
-import { NpcStateSchema, RelationshipSchema, type NpcState, type Relationship } from '@jhz/contracts';
-import { INITIAL_RELATIONS, NPC_DEFS, NPC_STATUSES, applyRelationDelta, isLocationId, isNpcId, type RelationDelta, type RelationTargetType } from '@jhz/game-rules';
+import { NpcMemorySchema, NpcStateSchema, RelationshipSchema, type NpcMemory, type NpcState, type Relationship } from '@jhz/contracts';
+import { MEMORY_EVENTS, planCompaction, summarizeMemories, INITIAL_RELATIONS, NPC_DEFS, NPC_STATUSES, applyRelationDelta, isLocationId, isNpcId, type RelationDelta, type RelationTargetType } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 
 /** 单机固定的玩家 ID（关系对象为玩家时使用） */
@@ -44,7 +44,7 @@ export function nextRelationship(current: Relationship | undefined, npcId: strin
  * 校验并规范化导入的人物世界：每个 NPC 与地点必须在定义里；关系的双方必须存在、不能指向自己、不得重复。
  * 文件里缺少的 NPC / 关系用初始值补齐。不合格时抛出带中文原因的 Error。
  */
-export function mergeImportedWorld(world: { npcs: NpcState[]; relationships: Relationship[] }): { npcs: NpcState[]; relationships: Relationship[] } {
+export function mergeImportedWorld(world: { npcs: NpcState[]; relationships: Relationship[]; memories?: NpcMemory[] }): { npcs: NpcState[]; relationships: Relationship[]; memories: ImportedMemory[] } {
   const npcs = new Map(initialNpcs().map((n) => [n.id, n]));
   const seenNpc = new Set<string>();
   for (const n of world.npcs) {
@@ -66,5 +66,44 @@ export function mergeImportedWorld(world: { npcs: NpcState[]; relationships: Rel
     seenRel.add(k);
     rels.set(k, r);
   }
-  return { npcs: [...npcs.values()], relationships: [...rels.values()] };
+  // 记忆：事件引用无法跨存档保留，每个 NPC 的全部记忆合并成一条摘要
+  const byNpc = new Map<string, NpcMemory[]>();
+  for (const m of world.memories ?? []) {
+    if (!isNpcId(m.npcId)) throw new Error(`存档里有未知人物的记忆：${m.npcId}`);
+    byNpc.set(m.npcId, [...(byNpc.get(m.npcId) ?? []), m]);
+  }
+  const memories = [...byNpc.entries()].map(([npcId, list]) => ({ npcId, ...summarizeMemories(list) }));
+  return { npcs: [...npcs.values()], relationships: [...rels.values()], memories };
+}
+
+export interface ImportedMemory {
+  npcId: string;
+  summary: string;
+  importance: number;
+  sourceCount: number;
+  createdAt: number;
+}
+
+/** 校验一条待写入的事件记忆（长度、重要性、类型）；不合格抛 VALIDATION_FAILED */
+export function validateMemoryInput(input: { type: string; summary: string; importance: number }): void {
+  if (!Object.hasOwn(MEMORY_EVENTS, input.type)) throw new AppError('VALIDATION_FAILED', '记忆类型不合法');
+  const probe = NpcMemorySchema.safeParse({ id: 'x', npcId: 'npc_x', eventId: 'e', type: input.type, summary: input.summary, importance: input.importance, sourceCount: 1, createdAt: 0 });
+  if (!probe.success) throw new AppError('VALIDATION_FAILED', '记忆内容不合法');
+}
+
+/** 反复合并直到不超过上限（每轮至少减少一条，最多 5 轮）；storage 由调用方提供，保证在同一事务里执行 */
+export function compactMemories(
+  load: () => NpcMemory[],
+  apply: (plan: NonNullable<ReturnType<typeof planCompaction>>) => void,
+): void {
+  for (let i = 0; i < 5; i++) {
+    const plan = planCompaction(load());
+    if (!plan) return;
+    apply(plan);
+  }
+}
+
+/** 导出存档用的世界快照：NPC 状态、关系与全部记忆 */
+export function snapshotWorld(tx: { npcs(): NpcState[]; relationships(): Relationship[]; memories(npcId: string): NpcMemory[] }) {
+  return { npcs: tx.npcs(), relationships: tx.relationships(), memories: tx.npcs().flatMap((n) => tx.memories(n.id)) };
 }

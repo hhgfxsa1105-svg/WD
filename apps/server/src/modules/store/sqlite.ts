@@ -3,21 +3,24 @@ import { and, asc, count, desc, eq, isNotNull } from 'drizzle-orm';
 import {
   ActionResponseSchema,
   LogRecordSchema,
+  NpcMemorySchema,
   NpcStateSchema,
   PlayerStateSchema,
   RelationshipSchema,
   type AuditEvent,
   type Honorific,
   type LogRecord,
+  type NpcMemory,
   type NpcState,
   type PlayerState,
   type Relationship,
 } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import type { Db } from '../../db/connection.js';
-import { actions, aiCallLogs, auditEvents, cultivationJobs, inventory, npcRelationships, npcs, playerStates, players, worldClock } from '../../db/schema.js';
+import { actions, aiCallLogs, auditEvents, cultivationJobs, inventory, npcMemories, npcRelationships, npcs, playerStates, players, worldClock } from '../../db/schema.js';
 import { AppError } from '../../shared/errors.js';
-import { assertLocation, assertNpc, assertStatus, assertTarget, initialNpcs, initialRelationships, nextRelationship } from './world-rules.js';
+import type { ImportedMemory } from './world-rules.js';
+import { assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 /** 单机固定的玩家 ID */
@@ -156,6 +159,28 @@ function makeTx(db: Executor): GameTx {
         .run();
     },
 
+    memories: (npcId) => readMemories(db, npcId),
+    memoryCounts() {
+      const out: Record<string, number> = Object.fromEntries(readNpcs(db).map((n) => [n.id, 0]));
+      for (const r of db.select({ npcId: npcMemories.npcId, n: count() }).from(npcMemories).groupBy(npcMemories.npcId).all()) out[r.npcId] = r.n;
+      return out;
+    },
+    addMemory(input) {
+      assertNpc(input.npcId);
+      validateMemoryInput(input);
+      if (!db.select({ id: auditEvents.id }).from(auditEvents).where(eq(auditEvents.id, input.eventId)).get()) throw new AppError('NOT_FOUND', '记忆引用的事件不存在');
+      const mem = NpcMemorySchema.parse({ id: randomUUID(), npcId: input.npcId, eventId: input.eventId, type: input.type, summary: input.summary, importance: input.importance, sourceCount: 1, createdAt: input.at });
+      db.insert(npcMemories).values({ id: mem.id, npcId: mem.npcId, eventId: mem.eventId, memoryType: mem.type, summary: mem.summary, importance: mem.importance, sourceCount: mem.sourceCount, createdAt: mem.createdAt }).run();
+      compactMemories(
+        () => readMemories(db, input.npcId),
+        (plan) => {
+          for (const id of plan.mergeIds) db.delete(npcMemories).where(eq(npcMemories.id, id)).run();
+          const sum = NpcMemorySchema.parse({ id: randomUUID(), npcId: input.npcId, eventId: null, type: 'summary', ...plan.summary });
+          db.insert(npcMemories).values({ id: sum.id, npcId: sum.npcId, eventId: null, memoryType: 'summary', summary: sum.summary, importance: sum.importance, sourceCount: sum.sourceCount, createdAt: sum.createdAt }).run();
+        },
+      );
+      return readMemories(db, input.npcId).find((m) => m.id === mem.id) ?? mem;
+    },
     npcs: () => readNpcs(db),
     relationships: () => readRelationships(db),
     adjustRelationship(npcId, target, delta) {
@@ -215,7 +240,7 @@ function makeTx(db: Executor): GameTx {
       const row = db
         .insert(auditEvents)
         .values({
-          id: randomUUID(),
+          id: input.id ?? randomUUID(),
           actorId: PLAYER_ID,
           actionId: input.actionId,
           eventType: input.eventType,
@@ -301,6 +326,16 @@ function readNpcs(db: Executor): NpcState[] {
     .map((r) => NpcStateSchema.parse({ id: r.id, locationId: r.locationId, status: r.status, goals: JSON.parse(r.goalsJson) }));
 }
 
+function readMemories(db: Executor, npcId: string): NpcMemory[] {
+  return db
+    .select()
+    .from(npcMemories)
+    .where(eq(npcMemories.npcId, npcId))
+    .orderBy(asc(npcMemories.createdAt), asc(npcMemories.id))
+    .all()
+    .map((r) => NpcMemorySchema.parse({ id: r.id, npcId: r.npcId, eventId: r.eventId, type: r.memoryType, summary: r.summary, importance: r.importance, sourceCount: r.sourceCount, createdAt: r.createdAt }));
+}
+
 function readRelationships(db: Executor): Relationship[] {
   return db
     .select()
@@ -329,16 +364,20 @@ export function writePlayerState(db: Db, state: PlayerState): void {
 }
 
 /** 覆盖写入 NPC 状态与关系（导入存档用）；world 为 null 表示重置为初始。世界数据须已通过 mergeImportedWorld 校验 */
-export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships: Relationship[] } | null): void {
-  const w = world ?? { npcs: initialNpcs(), relationships: initialRelationships() };
+export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships: Relationship[]; memories: ImportedMemory[] } | null): void {
+  const w = world ?? { npcs: initialNpcs(), relationships: initialRelationships(), memories: [] };
   db.transaction(
     (tx) => {
       tx.delete(npcRelationships).run();
+      tx.delete(npcMemories).run(); // 旧记忆引用的是旧存档的事件，整体替换
       for (const n of w.npcs) {
         const v = { locationId: n.locationId, status: n.status, goalsJson: JSON.stringify(n.goals) };
         tx.insert(npcs).values({ id: n.id, ...v }).onConflictDoUpdate({ target: npcs.id, set: { ...v, updatedAt: Date.now() } }).run();
       }
       for (const r of w.relationships) tx.insert(npcRelationships).values(r).run();
+      for (const m of w.memories) {
+        tx.insert(npcMemories).values({ id: randomUUID(), npcId: m.npcId, eventId: null, memoryType: 'summary', summary: m.summary, importance: m.importance, sourceCount: m.sourceCount, createdAt: m.createdAt }).run();
+      }
     },
     { behavior: 'immediate' },
   );

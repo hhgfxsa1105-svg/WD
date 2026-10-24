@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import type { ZodType, ZodTypeDef } from 'zod';
+import type { ZodType } from 'zod';
 import type { ErrorCode, ErrorResponse } from '@jhz/contracts';
 
 const STATUS: Record<ErrorCode, number> = {
@@ -24,7 +24,7 @@ export class AppError extends Error {
 }
 
 /** 服务端校验边界数据；失败只暴露字段路径与简要原因 */
-export function parseWith<T>(schema: ZodType<T, ZodTypeDef, unknown>, data: unknown): T {
+export function parseWith<T>(schema: ZodType<T>, data: unknown): T {
   const result = schema.safeParse(data);
   if (result.success) return result.data;
   const detail = result.error.issues

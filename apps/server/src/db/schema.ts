@@ -248,3 +248,37 @@ export const npcRelationships = sqliteTable(
     index('npc_relationships_target_idx').on(t.targetType, t.targetId),
   ],
 );
+
+/** 与 @jhz/contracts 的 MEMORY_TYPES 保持一致（测试校验） */
+export const DB_MEMORY_TYPES = ['met', 'breakthrough_success', 'breakthrough_failure', 'summary'] as const;
+const memoryTypeList = sql.raw(DB_MEMORY_TYPES.map((r) => `'${r}'`).join(', '));
+
+/**
+ * NPC 记忆：结构化、可检索。事件记忆必须引用已记录的审计事件（外键 RESTRICT：被引用的审计事件不能被删除）；
+ * 只有合并产生的 summary 没有单一事件。摘要由服务端模板生成，不接受 AI 文本。
+ */
+export const npcMemories = sqliteTable(
+  'npc_memories',
+  {
+    id: text('id').primaryKey(),
+    npcId: text('npc_id').notNull(),
+    eventId: text('event_id'),
+    memoryType: text('memory_type').notNull(),
+    summary: text('summary').notNull(),
+    importance: integer('importance').notNull(),
+    sourceCount: integer('source_count').notNull().default(1),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.npcId], foreignColumns: [npcs.id] }).onDelete('cascade'),
+    foreignKey({ columns: [t.eventId], foreignColumns: [auditEvents.id] }).onDelete('restrict'),
+    check('npc_memories_type_valid', sql`${t.memoryType} in (${memoryTypeList})`),
+    check('npc_memories_event_rule', sql`(${t.memoryType} = 'summary') = (${t.eventId} is null)`),
+    check('npc_memories_summary_len', sql`length(${t.summary}) between 1 and 160`),
+    check('npc_memories_importance_range', sql`${t.importance} between 1 and 10`),
+    check('npc_memories_source_count', sql`${t.sourceCount} between 1 and 10000`),
+    check('npc_memories_created_at', sql`${t.createdAt} >= 0`),
+    index('npc_memories_npc_idx').on(t.npcId, t.createdAt),
+    index('npc_memories_event_idx').on(t.eventId),
+  ],
+);

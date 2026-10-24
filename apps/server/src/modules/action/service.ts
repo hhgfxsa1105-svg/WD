@@ -10,6 +10,7 @@ import { pillGradeOf, resolveBreakthrough, resolveFixedAction, type Rng } from '
 import { AppError } from '../../shared/errors.js';
 import type { Clock } from '../../shared/runtime.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
+import { breakthroughWitnesses, recordNpcMemories } from '../npc/memory.js';
 import type { GameStore, GameTx, LogPayload } from '../store/types.js';
 
 /** 状态机允许的流转；已 COMMITTED 的行动不得再次结算 */
@@ -153,7 +154,9 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       tx.saveAction({ ...base, response: draft }); // 先落行动，审计事件才能引用它
       const diff = stateDiff(before, snapshot(tx));
       const narrated = !!narratable?.(resolved.log.type);
+      const eventId = randomUUID();
       const log = tx.appendEvent({
+        id: eventId,
         actionId,
         eventType: extra.eventType ?? (req.kind === 'fixed' ? `action.${req.actionId}` : 'action.breakthrough'),
         before: diff?.before ?? null,
@@ -161,6 +164,9 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
         at: now,
         log: narrated ? { ...resolved.log, narration: { actionId, pending: true } } : resolved.log,
       });
+      // 在场的 NPC 会记住这次突破（记忆与关系变化记在单独的 npc.memory 事件里）
+      const bt = resolved.log.breakthrough;
+      if (bt) recordNpcMemories(tx, { sourceEventId: eventId, actionId, at: now, entries: breakthroughWitnesses(tx, bt.outcome, bt.realmTo) });
       const response = ActionResponseSchema.parse({ ...draft, log });
       tx.saveAction({ ...base, response });
       return { response, fresh: true };

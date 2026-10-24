@@ -9,8 +9,8 @@ export const AuditEventSchema = z
     actorId: z.string().min(1),
     actionId: z.string().nullable(),
     eventType: z.string().min(1).max(64),
-    before: z.record(z.unknown()).nullable(),
-    after: z.record(z.unknown()).nullable(),
+    before: z.record(z.string(), z.unknown()).nullable(),
+    after: z.record(z.string(), z.unknown()).nullable(),
     at: z.number().int().min(0),
   })
   .strict();

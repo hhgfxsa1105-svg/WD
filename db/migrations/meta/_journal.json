@@ -50,6 +50,13 @@
       "when": 1792767469227,
       "tag": "0006_npc_world",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1792840811134,
+      "tag": "0007_npc_memories",
+      "breakpoints": true
     }
   ]
 }

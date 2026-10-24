@@ -224,7 +224,7 @@ describe('持久化（文件数据库）：幂等与日志跨重启', () => {
     expect(s2.store.read((tx) => tx.inventory().find((i) => i.itemId === PILL)?.quantity ?? 0)).toBe(0);
     expect(s2.store.read((tx) => tx.player().version)).toBe(1);
     expect(count(b.d, 'actions')).toBe(1);
-    expect(count(b.d, 'audit_events')).toBe(1);
+    expect(count(b.d, 'audit_events')).toBe(2); // 突破事件 + 在场 NPC 的记忆后果事件（npc.memory）
     // 参数不同仍被拒绝
     expect((await s2.bt(1, null)).statusCode).toBe(409);
     // 日志也在

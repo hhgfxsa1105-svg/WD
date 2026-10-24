@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { LogRecordSchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type NpcState, type PlayerState, type Relationship } from '@jhz/contracts';
+import { LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type NpcMemory, type NpcState, type PlayerState, type Relationship } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
-import { assertLocation, assertNpc, assertStatus, assertTarget, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
+import { assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 interface State {
@@ -12,6 +12,7 @@ interface State {
   actions: Map<string, StoredAction>;
   npcs: Map<string, NpcState>;
   relations: Map<string, Relationship>;
+  memories: Map<string, NpcMemory>;
   events: (AuditEvent & { log: LogRecord | null })[];
   seq: number;
 }
@@ -23,6 +24,7 @@ const cloneState = (s: State): State => ({
   actions: new Map([...s.actions].map(([k, v]) => [k, structuredClone(v)])),
   npcs: new Map([...s.npcs].map(([k, v]) => [k, structuredClone(v)])),
   relations: new Map([...s.relations].map(([k, v]) => [k, { ...v }])),
+  memories: new Map([...s.memories].map(([k, v]) => [k, { ...v }])),
   events: structuredClone(s.events),
   seq: s.seq,
 });
@@ -59,6 +61,26 @@ function makeTx(s: State): GameTx {
         if (other) throw new AppError('CONFLICT', '已有进行中的修炼');
       }
       s.jobs.set(job.id, { ...job });
+    },
+    memories: (npcId) => [...s.memories.values()].filter((m) => m.npcId === npcId).sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)).map((m) => ({ ...m })),
+    memoryCounts() {
+      const out: Record<string, number> = Object.fromEntries([...s.npcs.keys()].map((id) => [id, 0]));
+      for (const m of s.memories.values()) out[m.npcId] = (out[m.npcId] ?? 0) + 1;
+      return out;
+    },
+    addMemory(input) {
+      assertNpc(input.npcId);
+      validateMemoryInput(input);
+      if (!s.events.some((e) => e.id === input.eventId)) throw new AppError('NOT_FOUND', '记忆引用的事件不存在');
+      const mem = NpcMemorySchema.parse({ id: randomUUID(), npcId: input.npcId, eventId: input.eventId, type: input.type, summary: input.summary, importance: input.importance, sourceCount: 1, createdAt: input.at });
+      s.memories.set(mem.id, mem);
+      const mine = () => [...s.memories.values()].filter((m) => m.npcId === input.npcId);
+      compactMemories(mine, (plan) => {
+        for (const id of plan.mergeIds) s.memories.delete(id);
+        const sum = NpcMemorySchema.parse({ id: randomUUID(), npcId: input.npcId, eventId: null, type: 'summary', ...plan.summary });
+        s.memories.set(sum.id, sum);
+      });
+      return { ...(s.memories.get(mem.id) ?? mem) };
     },
     npcs: () => [...s.npcs.values()].map((n) => structuredClone(n)),
     relationships: () => [...s.relations.values()].map((r) => ({ ...r })),
@@ -103,7 +125,7 @@ function makeTx(s: State): GameTx {
       const log = input.log ? LogRecordSchema.parse({ ...input.log, id: seq, at: input.at }) : null;
       s.events.push({
         seq,
-        id: randomUUID(),
+        id: input.id ?? randomUUID(),
         actorId: 'player_1',
         actionId: input.actionId,
         eventType: input.eventType,
@@ -138,6 +160,7 @@ export function createMemoryGameStore(initial: PlayerState = createInitialPlayer
     jobs: new Map(),
     actions: new Map(),
     npcs: new Map(initialNpcs().map((n) => [n.id, n])),
+    memories: new Map(),
     relations: new Map(initialRelationships().map((r) => [relationKey(r.npcId, r.targetType, r.targetId), r])),
     events: [],
     seq: 0,

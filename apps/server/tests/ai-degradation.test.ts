@@ -11,6 +11,7 @@ import { AiError, type AiErrorKind, type AiProvider } from '../src/modules/ai/ty
 import { friendlyAiMessage } from '../src/modules/action/free.js';
 import { buildSaveFile, parseSaveFile } from '../src/modules/player/save-file.js';
 import { createMemoryGameStore } from '../src/modules/store/memory.js';
+import { snapshotWorld } from '../src/modules/store/world-rules.js';
 
 const T0 = new Date(2026, 9, 23, 10, 0, 0).getTime();
 const ALL_KINDS: AiErrorKind[] = ['DISABLED', 'BUDGET_EXCEEDED', 'INPUT_TOO_LARGE', 'TIMEOUT', 'NETWORK', 'RATE_LIMITED', 'SERVER_ERROR', 'AUTH', 'BAD_REQUEST', 'REFUSED', 'BAD_RESPONSE'];
@@ -65,7 +66,7 @@ describe.each(MODES)('降级矩阵：$name', (mode) => {
     }
     LogResponseSchema.parse((await g.get('/api/v1/log')).json());
     // 存档导出再解析
-    const saved = buildSaveFile(...g.store.read((tx) => [tx.player(), { npcs: tx.npcs(), relationships: tx.relationships() }] as const));
+    const saved = buildSaveFile(...g.store.read((tx) => [tx.player(), snapshotWorld(tx)] as const));
     expect(parseSaveFile(JSON.stringify(saved)).player).toEqual(saved.player);
   });
 

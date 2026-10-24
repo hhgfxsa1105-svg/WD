@@ -83,7 +83,7 @@ describe('叙事与结算分离：成功路径', () => {
     expect(s.pills()).toBe(base.pills);
     expect((await s.log()).at(-1)?.narrative).toBe(GOOD);
     expect((await s.log()).at(-1)?.narration).toEqual({ actionId: res.actionId, pending: false });
-    expect(s.events(res.actionId)).toEqual(['action.breakthrough', 'action.narrated']);
+    expect(s.events(res.actionId)).toEqual(['action.breakthrough', 'npc.memory', 'action.narrated']);
   });
 
   it('叙事请求只含服务端确认的事实：不含玩家原话，限制输出 token，使用独立用途', async () => {
@@ -137,7 +137,7 @@ describe('叙事失败：行动结果不变，回退模板，可稍后重试', (
       expect(s.pills()).toBe(base.pills);
       expect(s.state().version).toBe(base.player.version);
       expect(s.narrateCalls()).toHaveLength(1); // 不自动反复重试
-      expect(s.events(res.actionId)).toEqual(['action.breakthrough']);
+      expect(s.events(res.actionId)).toEqual(['action.breakthrough', 'npc.memory']);
       expect((await s.log()).at(-1)?.narrative).toBe(base.template);
       expect((await s.log()).at(-1)?.narration).toEqual({ actionId: res.actionId, pending: true }); // 日志带「叙事待补」标记，刷新后前端据此显示重试入口
     });
@@ -174,7 +174,7 @@ describe('叙事失败：行动结果不变，回退模板，可稍后重试', (
     expect(first.log?.narration).toEqual({ actionId: first.actionId, pending: true });
     expect(done.log).toEqual({ ...first.log, narrative: GOOD, narration: { actionId: first.actionId, pending: false } });
     expect(s.state()).toEqual(playerBefore);
-    expect(s.events(first.actionId)).toEqual(['action.breakthrough', 'action.narrated']);
+    expect(s.events(first.actionId)).toEqual(['action.breakthrough', 'npc.memory', 'action.narrated']);
     expect((await s.log()).at(-1)?.narrative).toBe(GOOD);
     expect((await s.log()).at(-1)?.narration).toEqual({ actionId: first.actionId, pending: false });
 
@@ -341,7 +341,7 @@ describe('持久化（SQLite）：待补叙事随存档保存，重启后仍可�
     expect(s2.state()).toEqual(before);
     expect((await s2.log()).at(-1)?.narrative).toBe(GOOD);
     expect(store2.read((tx) => tx.getAction(first.actionId))!.response.narrative).toBe(GOOD);
-    expect(s2.events(first.actionId)).toEqual(['action.breakthrough', 'action.narrated']);
+    expect(s2.events(first.actionId)).toEqual(['action.breakthrough', 'npc.memory', 'action.narrated']);
     d2.close();
   });
 });

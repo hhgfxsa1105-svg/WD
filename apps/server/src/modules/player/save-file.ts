@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { NpcStateSchema, PlayerStateSchema, RelationshipSchema, type NpcState, type PlayerState, type Relationship } from '@jhz/contracts';
+import { NpcMemorySchema, NpcStateSchema, PlayerStateSchema, RelationshipSchema, type NpcMemory, type NpcState, type PlayerState, type Relationship } from '@jhz/contracts';
 
 export const SAVE_FORMAT = 'jianghu-save';
 
@@ -7,6 +7,8 @@ const WorldSchema = z
   .object({
     npcs: z.array(NpcStateSchema).max(200),
     relationships: z.array(RelationshipSchema).max(2000),
+    /** 记忆的事件引用无法跨存档保留，导入时按 NPC 合并为一条摘要；缺省视为没有 */
+    memories: z.array(NpcMemorySchema).max(5000).default([]),
   })
   .strict();
 export type SaveWorld = z.infer<typeof WorldSchema>;
@@ -20,12 +22,12 @@ export const SaveFileSchema = z.union([
 ]);
 export type SaveFile = z.infer<typeof SaveFileSchema>;
 
-export const buildSaveFile = (player: PlayerState, world: { npcs: NpcState[]; relationships: Relationship[] }, now = new Date()): SaveFile => ({
+export const buildSaveFile = (player: PlayerState, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[] }, now = new Date()): SaveFile => ({
   format: SAVE_FORMAT,
   schemaVersion: 2,
   exportedAt: now.toISOString(),
   player,
-  world: { npcs: world.npcs, relationships: world.relationships },
+  world: { npcs: world.npcs, relationships: world.relationships, memories: world.memories },
 });
 
 /** 解析存档文件；v1 的 world 为 null（导入时人物状态重置为初始） */

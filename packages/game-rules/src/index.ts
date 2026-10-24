@@ -6,6 +6,7 @@ export * from './cultivation.js';
 export * from './currency.js';
 export * from './initial.js';
 export * from './items.js';
+export * from './memory.js';
 export * from './narrative.js';
 export * from './progress.js';
 export * from './rng.js';

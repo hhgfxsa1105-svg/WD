@@ -4,12 +4,13 @@ import {
   AuditActionResponseSchema,
   InventoryResponseSchema,
   NpcListResponseSchema,
+  NpcMemoryListResponseSchema,
   LogResponseSchema,
   PlayerStateSchema,
   SubmitActionRequestSchema,
   WorldTimeResponseSchema,
 } from '@jhz/contracts';
-import { NPC_DEFS, isNpcId, locationName } from '@jhz/game-rules';
+import { NPC_DEFS, isNpcId, locationName, selectMemories } from '@jhz/game-rules';
 import { z } from 'zod';
 import { AppError, parseWith } from '../shared/errors.js';
 import type { ActionService } from './action/service.js';
@@ -64,6 +65,14 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
       }),
     }),
   );
+
+  // 某个 NPC 的记忆（只读）：按时间正序；`context=1` 时返回对话上下文用的精选（条数与字数受限）
+  app.get<{ Params: { id: string } }>('/api/v1/world/npcs/:id/memories', async (req) => {
+    const { context } = parseWith(z.object({ context: z.enum(['0', '1']).default('0') }).strict(), req.query);
+    if (!isNpcId(req.params.id)) throw new AppError('NOT_FOUND', '没有这个人物');
+    const all = store.read((tx) => tx.memories(req.params.id));
+    return NpcMemoryListResponseSchema.parse({ npcId: req.params.id, memories: context === '1' ? selectMemories(all) : all });
+  });
 
   app.get('/api/v1/player/state', async () => PlayerStateSchema.parse(store.read((tx) => tx.player())));
   app.get('/api/v1/player/inventory', async () => InventoryResponseSchema.parse({ items: store.read((tx) => tx.inventory()) }));

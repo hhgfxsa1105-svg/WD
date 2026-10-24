@@ -12,6 +12,8 @@ import { AppError } from '../../shared/errors.js';
 import { AiError, type AiGateway } from '../ai/index.js';
 import { buildParseMessages, sanitizePlayerInput } from '../ai/prompt.js';
 import type { CultivationService } from '../cultivation/service.js';
+import { meetNpc } from '../npc/memory.js';
+import type { Clock } from '../../shared/runtime.js';
 import type { Narrator } from '../narrative/service.js';
 import type { GameStore, GameTx } from '../store/types.js';
 import type { ActionService } from './service.js';
@@ -65,6 +67,7 @@ export interface FreeDeps {
   actions: ActionService;
   cultivation: CultivationService;
   ai: AiGateway;
+  clock: Clock;
   /** 叙事与结算分离：结算提交后才尝试 AI 叙事；未提供则不叙事 */
   narrator?: Narrator;
 }
@@ -74,7 +77,7 @@ export interface FreeDeps {
  * 由服务端按**当前状态**重新判定（体力、进度、冷却、库存……），AI 无法绕过任何规则。
  * 复用固定行动的事务、幂等、审计与日志；幂等重放不会再次调用 AI。
  */
-export function createFreeActionService({ store, actions, cultivation, ai, narrator }: FreeDeps) {
+export function createFreeActionService({ store, actions, cultivation, ai, clock, narrator }: FreeDeps) {
   /** 同一幂等键的并发请求合并为一次 AI 调用 */
   const inflight = new Map<string, Promise<ActionResponse>>();
 
@@ -153,6 +156,12 @@ export function createFreeActionService({ store, actions, cultivation, ai, narra
       default:
         if (plan.action_type === 'talk') {
           const targetId = plan.target?.type === 'npc' ? plan.target.id : null;
+          const here = targetId ? store.read((tx) => tx.npcs().find((n) => n.id === targetId)?.locationId === tx.player().location.id) : false;
+          if (targetId && here) {
+            // 在场：第一次见面会留下记忆并微调关系（有审计事件与日志）；之后再打招呼不改状态
+            const met = meetNpc(store, targetId, clock.now());
+            if (met.firstMeeting) return respond(player(), met.narrative, info(true), [], met.log);
+          }
           return clarify(talkText(player(), store.read((tx) => tx.npcs()), targetId), plan.intent, plan.action_type);
         }
         return clarify(plan.clarification ?? '没太明白你想做什么，可以换个说法。', plan.intent, plan.action_type);

@@ -1,5 +1,5 @@
-import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LogRecord, NpcState, PlayerState, Relationship } from '@jhz/contracts';
-import type { NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
+import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LogRecord, NpcMemory, NpcState, PlayerState, Relationship } from '@jhz/contracts';
+import type { MemoryEventKind, NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
 
 export interface CultivationJobRecord {
   id: string;
@@ -29,6 +29,8 @@ export interface StoredAction {
 export type LogPayload = Omit<LogRecord, 'id' | 'at'>;
 
 export interface AuditEventInput {
+  /** 指定事件 ID（记忆需要在事件落库前拿到它）；不给则自动生成 */
+  id?: string;
   actionId: string | null;
   eventType: string;
   /** 只含发生变化的字段 */
@@ -60,6 +62,16 @@ export interface GameTx {
   /** 移动 NPC；NPC 或地点不存在抛 NOT_FOUND */
   moveNpc(npcId: string, locationId: string): NpcState;
   setNpcStatus(npcId: string, status: NpcStatus): NpcState;
+
+  /** 某个 NPC 的全部记忆，按时间正序 */
+  memories(npcId: string): NpcMemory[];
+  /** 每个 NPC 的记忆条数（审计快照用） */
+  memoryCounts(): Record<string, number>;
+  /**
+   * 写入一条事件记忆：NPC 与事件必须存在（事件须已在本事务或此前落库），摘要与重要性受约束；
+   * 写入后若超过上限，在同一事务里把旧的低重要性记忆合并为摘要。
+   */
+  addMemory(input: { npcId: string; eventId: string; type: MemoryEventKind; summary: string; importance: number; at: number }): NpcMemory;
 
   findActionByKey(idempotencyKey: string): StoredAction | null;
   getAction(id: string): StoredAction | null;

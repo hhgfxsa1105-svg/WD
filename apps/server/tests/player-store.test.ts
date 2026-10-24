@@ -11,6 +11,7 @@ import { createMemoryGameStore } from '../src/modules/store/memory.js';
 import { createSqliteGameStore, ensureSeed, writePlayerState } from '../src/modules/store/sqlite.js';
 import type { GameStore } from '../src/modules/store/types.js';
 import { buildSaveFile, parseSaveFile } from '../src/modules/player/save-file.js';
+import { snapshotWorld } from '../src/modules/store/world-rules.js';
 
 const sqliteStore = () => {
   const d = openDatabase(':memory:');
@@ -260,7 +261,7 @@ describe('存档导出 / 导入', () => {
     runMigrations(d.db);
     const s = createSqliteGameStore(d.db);
     s.transact((tx) => tx.savePlayer(spend(tx.player())));
-    const text = JSON.stringify(buildSaveFile(...s.read((tx) => [tx.player(), { npcs: tx.npcs(), relationships: tx.relationships() }] as const)));
+    const text = JSON.stringify(buildSaveFile(...s.read((tx) => [tx.player(), snapshotWorld(tx)] as const)));
 
     const d2 = openDatabase(':memory:');
     runMigrations(d2.db);
