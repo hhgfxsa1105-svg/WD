@@ -26,17 +26,17 @@
 
 | 层级 | 技术 |
 |:---:|:---:|
-| 前端 | Vue 3、TypeScript、Vite |
-| UI 样式 | Tailwind CSS |
+| 前端 | React 18、TypeScript、Vite |
+| UI 样式 | 手写 CSS（设计变量，无 UI 框架） |
 | 后端 | Node.js、Fastify |
-| 数据库 | PostgreSQL |
+| 数据库 | SQLite（单机本地文件） |
 | 数据访问 | Drizzle ORM |
 | 数据校验 | Zod |
-| 自动化测试 | Vitest |
-| AI 接入 | 服务端模型适配层 |
+| 自动化测试 | Vitest、Playwright |
+| AI 接入 | 服务端模型适配层（OpenAI 兼容协议，国产模型或中转站均可） |
 | 版本管理 | Git、GitHub |
 
-以上为项目计划采用的技术基线，具体依赖版本及部署方案将在开发过程中确定。
+> 与最初计划的技术基线（Vue 3、Tailwind CSS、PostgreSQL）有两处不同：数据库改为 SQLite 是因为项目定位为**单机自用**（见 [单机调整说明](docs/adjustments.md)）；前端实际使用 React 与手写 CSS，这一偏离在项目启动时没有记录，已补记于单机调整说明，并已由项目负责人确认保留。
 
 ## *系统设计*
 
@@ -62,25 +62,35 @@ AI 可以提出行动方案、分析风险并生成剧情，但不能直接决�
 
 | 阶段 | 目标 | 状态 |
 |:---:|:---:|:---:|
-| S1 | 项目骨架与可玩网页原型 | 待开始 |
-| S2 | 规则引擎、修炼与离线收益 | 待开始 |
-| S3 | AI 自由行动与结果判定 | 待开始 |
-| S4 | NPC、人物关系与长期记忆 | 待开始 |
-| S5 | 动态江湖、门派与世界事件 | 待开始 |
-| S6 | 测试、审计、部署与发布 | 待开始 |
+| S1 | 项目骨架与可玩网页原型 | 已完成，待验收签核（[审计报告](docs/audit/S1-report.md)） |
+| S2 | 规则引擎、修炼与离线收益 | 已完成，待验收签核（[审计报告](docs/audit/S2-report.md)） |
+| S3 | AI 自由行动与结果判定 | 已完成，待验收签核（[审计报告](docs/audit/S3-report.md)） |
+| S4 | NPC、人物关系与长期记忆 | 已完成，待验收签核（[审计报告](docs/audit/S4-report.md)） |
+| S5 | 动态江湖、门派与世界事件 | 未开始 |
+| S6 | 测试、审计、部署与发布 | 未开始 |
 
-开发遵循小步迭代原则：每项功能先明确验收标准，再编写代码、执行测试并记录结果。
+开发遵循小步迭代原则：每项功能先明确验收标准，再编写代码、执行测试并记录结果。逐任务的实现与验证证据见 [任务记录](docs/task-records/)。
 
 ## *项目文档*
 
 项目采用统一的文档基线管理需求、技术设计、开发任务和质量审计。
-
-计划维护以下文档：
-
-- "docs/project-charter.md"：项目书，定义项目目标与整体规划。
-- "docs/technical-spec.md"：技术说明书，定义架构、模块、数据和接口。
-- "docs/task-plan.md"：开发任务书，记录任务依赖、交付物和验收条件。
-- "docs/audit-checklist.md"：审计检查清单，定义测试、质量与发布门槛。
+| 文档 | 说明 |
+|---|---|
+| [项目书](docs/project-charter.md) | 目标、范围、玩法循环、阶段规划 |
+| [技术说明书](docs/technical-spec.md) | 架构、数据模型、行动协议、API |
+| [开发任务书](docs/task-plan.md) | S1–S6 共 28 项任务与验收条件 |
+| [审计检查清单](docs/audit-checklist.md) | 质量门槛与发布判定 |
+| [单机调整说明](docs/adjustments.md) | 相对 V1.0 文档的单机自用调整（**优先于原文**） |
+| [任务记录](docs/task-records/) | 每项任务的实现、验证命令与证据 |
+| [AI 行动契约](docs/ai-contract.md) | AI 输出格式、信任边界、宽容解析规则 |
+| [AI 配置指南](docs/ai-setup.md) | 接入国产模型或中转站、额度与安全说明 |
+| [接口一览](docs/api.md) | 所有接口、错误与幂等约定 |
+| [性能基线](docs/perf-baseline.md) | 性能目标与实测数据（G-05） |
+| [核心规则](docs/rules.md) | 修炼、货币、突破、魅力的公式与数据表 |
+| [原型演示](docs/demo.md) | 从零安装到走完原型循环的步骤 |
+| [已知问题](docs/known-issues.md) | 当前限制与处理阶段 |
+| [待定设定](docs/open-settings.md) | 所有占位、待定的数值与内容设定 |
+| [审计报告](docs/audit/) | 各阶段审计与签核记录 |
 
 文档将随着项目实现持续更新，确保需求、代码和验收标准保持一致。
 
@@ -96,11 +106,55 @@ AI 可以提出行动方案、分析风险并生成剧情，但不能直接决�
 
 ## *当前状态*
 
-项目处于立项与技术设计阶段，正在建立项目文档、技术规范和开发任务体系。
+核心循环已经可以在本机完整运行：
 
-当前首要目标是完成首个可玩的网页原型，跑通：
+修炼成长 → 玩家行动（固定选项或自由输入）→ 规则判定 → 世界状态变化（人物关系、记忆、任务、地点）→ 剧情反馈 → 存档。
 
-修炼成长 → 遭遇事件 → 玩家行动 → 规则判定 → 世界状态变化 → 剧情反馈 → 存档。
+已实现：修炼与放置收益（含离线）、突破与丹药、AI 自由行动（国产模型或中转站，失败自动降级）、结算与叙事分离、地图与移动、NPC 与关系、记忆、任务链、存档导出导入。尚未实现：动态世界事件、NPC 日程、门派与势力（S5）以及发布前的整体审计（S6）。真实模型尚未联调（需要你配置密钥，见 [AI 配置指南](docs/ai-setup.md)）。
+
+## *环境要求*
+Node.js ≥ 20（`better-sqlite3` 为原生模块，常见平台自带预编译包；若安装失败请安装 C++ 构建工具后重试）
+
+## *快速开始*
+```bash
+npm install
+cp .env.example .env     # 可选，默认值即可运行
+npm run dev              # 开发：服务 127.0.0.1:3000，前端 127.0.0.1:5173
+npm start                # 构建前端并由本机服务托管：http://127.0.0.1:3000
+```
+存档默认在 `data/jianghu.sqlite`（可用 `DB_PATH` 修改，相对路径以仓库根目录为准，已被 `.gitignore` 忽略）。
+真实密钥（AI API Key）只放 `.env`，已被 `.gitignore` 忽略，不会进入前端或仓库。
+
+## *常用命令*
+| 命令 | 作用 |
+|---|---|
+| `npm run dev` | 同时启动后端与前端开发服务 |
+| `npm start` | 构建并以生产方式本机运行 |
+| `npm run build` | 构建前端 |
+| `npm run db:migrate` | 迁移数据库到最新版本并写入初始角色（`npm start`/`dev` 启动时也会自动执行） |
+| `npm run db:export -- [文件]` | 导出存档为 JSON（不带文件名则输出到终端） |
+| `npm run db:import -- <文件>` | 导入存档（先自动备份当前存档，文件经严格校验） |
+| `npm run db:generate` | 修改 `schema.ts` 后生成新的迁移文件到 `db/migrations` |
+| `npm run typecheck` | 全工作区 TypeScript 类型检查 |
+| `npm test` | 运行 Vitest（单元与集成） |
+| `npm run bench` | 性能基线（规则吞吐、接口延迟、存档增长、启动耗时），见 [性能基线](docs/perf-baseline.md) |
+| `npm run test:e2e` | 浏览器端到端测试（需 `npx playwright install chromium`，或设置 `PW_CHROMIUM_PATH`） |
+
+## *目录结构*
+```
+apps/web              前端（React + Vite）
+apps/server           本地后端（Fastify，模块化单体）
+packages/contracts    共享 DTO 与 Zod schema
+packages/game-rules   纯规则函数（无 IO，可固定种子复现）
+db/migrations         Drizzle 生成的 SQL 迁移（schema 见 apps/server/src/db/schema.ts）
+db/seeds              种子说明（初始角色由 packages/game-rules 提供）
+docs/                 项目文档与任务记录
+```
+
+## *开发约定*
+- 每次只做一个可验证的垂直切片，附验证命令与证据。
+- 数据库结构变更须有迁移文件；核心规则变更须同步测试、技术说明书和审计项。
+- 未经评审不引入新框架或大范围重构；P0/P1 未清零不得验收。
 
 ## *项目愿景*
 

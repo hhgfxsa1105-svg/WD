@@ -1,0 +1,272 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "cf065f73-fde8-4ce7-b547-bb1e05ad8962",
+  "prevId": "504522c7-396a-4d89-9fac-7901a5482a8f",
+  "tables": {
+    "player_states": {
+      "name": "player_states",
+      "columns": {
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "realm": {
+          "name": "realm",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "realm_progress": {
+          "name": "realm_progress",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hp": {
+          "name": "hp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "max_hp": {
+          "name": "max_hp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stamina": {
+          "name": "stamina",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "max_stamina": {
+          "name": "max_stamina",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "neili_current": {
+          "name": "neili_current",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "neili_max": {
+          "name": "neili_max",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "yuanbao": {
+          "name": "yuanbao",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "silver": {
+          "name": "silver",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "copper": {
+          "name": "copper",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attributes_json": {
+          "name": "attributes_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title_json": {
+          "name": "title_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "epithet_json": {
+          "name": "epithet_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fate_json": {
+          "name": "fate_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "location_id": {
+          "name": "location_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "location_name": {
+          "name": "location_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "breakthrough_available_at": {
+          "name": "breakthrough_available_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "player_states_player_id_players_id_fk": {
+          "name": "player_states_player_id_players_id_fk",
+          "tableFrom": "player_states",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_states_realm_valid": {
+          "name": "player_states_realm_valid",
+          "value": "\"player_states\".\"realm\" in ('body_tempering', 'opening', 'houtian', 'xiantian', 'grandmaster', 'mingshen', 'land_immortal')"
+        },
+        "player_states_progress_range": {
+          "name": "player_states_progress_range",
+          "value": "\"player_states\".\"realm_progress\" between 0 and 100"
+        },
+        "player_states_hp_range": {
+          "name": "player_states_hp_range",
+          "value": "\"player_states\".\"hp\" >= 0 and \"player_states\".\"max_hp\" >= 1 and \"player_states\".\"hp\" <= \"player_states\".\"max_hp\""
+        },
+        "player_states_stamina_range": {
+          "name": "player_states_stamina_range",
+          "value": "\"player_states\".\"stamina\" >= 0 and \"player_states\".\"max_stamina\" >= 1 and \"player_states\".\"stamina\" <= \"player_states\".\"max_stamina\""
+        },
+        "player_states_neili_consistent": {
+          "name": "player_states_neili_consistent",
+          "value": "(\"player_states\".\"neili_current\" is null and \"player_states\".\"neili_max\" is null) or (\"player_states\".\"neili_current\" is not null and \"player_states\".\"neili_max\" is not null and \"player_states\".\"neili_current\" >= 0 and \"player_states\".\"neili_max\" >= 1 and \"player_states\".\"neili_current\" <= \"player_states\".\"neili_max\")"
+        },
+        "player_states_currency_nonneg": {
+          "name": "player_states_currency_nonneg",
+          "value": "\"player_states\".\"yuanbao\" >= 0 and \"player_states\".\"silver\" >= 0 and \"player_states\".\"copper\" >= 0"
+        },
+        "player_states_version_nonneg": {
+          "name": "player_states_version_nonneg",
+          "value": "\"player_states\".\"version\" >= 0"
+        },
+        "player_states_cooldown_nonneg": {
+          "name": "player_states_cooldown_nonneg",
+          "value": "\"player_states\".\"breakthrough_available_at\" is null or \"player_states\".\"breakthrough_available_at\" >= 0"
+        }
+      }
+    },
+    "players": {
+      "name": "players",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

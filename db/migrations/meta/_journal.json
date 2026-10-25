@@ -1,0 +1,69 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1792723903620,
+      "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792725039362,
+      "tag": "0001_breakthrough_cooldown",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792725575449,
+      "tag": "0002_inventory_and_cultivation",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792727041048,
+      "tag": "0003_offline_and_world_clock",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792727749615,
+      "tag": "0004_actions_and_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792732713071,
+      "tag": "0005_ai_call_logs",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792767469227,
+      "tag": "0006_npc_world",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1792840811134,
+      "tag": "0007_npc_memories",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792842550350,
+      "tag": "0008_quests_and_move_kinds",
+      "breakpoints": true
+    }
+  ]
+}
