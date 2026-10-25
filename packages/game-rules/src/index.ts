@@ -6,6 +6,7 @@ export * from './clock.js';
 export * from './cultivation.js';
 export * from './currency.js';
 export * from './events.js';
+export * from './factions.js';
 export * from './initial.js';
 export * from './items.js';
 export * from './memory.js';

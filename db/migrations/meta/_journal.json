@@ -85,6 +85,13 @@
       "when": 1792907857728,
       "tag": "0011_world_events",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1792910578657,
+      "tag": "0012_factions",
+      "breakpoints": true
     }
   ]
 }

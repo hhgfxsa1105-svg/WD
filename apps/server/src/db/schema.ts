@@ -372,6 +372,64 @@ export const news = sqliteTable(
 );
 
 /**
+ * 势力的可变状态：实力 0..100、对玩家的态度 −100..100。只能由程序定义的事件通过存档层小幅改动。
+ */
+export const factions = sqliteTable(
+  'factions',
+  {
+    id: text('id').primaryKey(),
+    strength: integer('strength').notNull(),
+    attitude: integer('attitude').notNull(),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    check('factions_id_format', sql`${t.id} glob 'fac_*' and length(${t.id}) <= 40`),
+    check('factions_strength_range', sql`${t.strength} between 0 and 100`),
+    check('factions_attitude_range', sql`${t.attitude} between -100 and 100`),
+  ],
+);
+
+/** 势力之间的关系：a < b 保证一对势力只有一行（双向共用一个数值） */
+export const factionRelations = sqliteTable(
+  'faction_relations',
+  {
+    a: text('a').notNull(),
+    b: text('b').notNull(),
+    value: integer('value').notNull(),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    primaryKey({ columns: [t.a, t.b] }),
+    foreignKey({ columns: [t.a], foreignColumns: [factions.id] }).onDelete('cascade'),
+    foreignKey({ columns: [t.b], foreignColumns: [factions.id] }).onDelete('cascade'),
+    check('faction_relations_order', sql`${t.a} < ${t.b}`),
+    check('faction_relations_range', sql`${t.value} between -100 and 100`),
+  ],
+);
+
+/** 势力历史：每个造成了势力变化的事件一条（事件唯一）；变化明细是前后值，可重放核对 */
+export const factionHistory = sqliteTable(
+  'faction_history',
+  {
+    seq: integer('seq').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull(),
+    eventId: text('event_id').notNull(),
+    gameMinutes: integer('game_minutes').notNull(),
+    text: text('text').notNull(),
+    changesJson: text('changes_json').notNull(),
+    createdAt: integer('created_at').notNull().default(nowMs),
+  },
+  (t) => [
+    foreignKey({ columns: [t.eventId], foreignColumns: [worldEvents.id] }).onDelete('cascade'),
+    uniqueIndex('faction_history_id_unique').on(t.id),
+    uniqueIndex('faction_history_event_unique').on(t.eventId),
+    check('faction_history_text_len', sql`length(${t.text}) between 1 and 400`),
+    check('faction_history_time_nonneg', sql`${t.gameMinutes} >= 0`),
+    check('faction_history_changes_json', sql`json_valid(${t.changesJson}) and json_type(${t.changesJson}) = 'array'`),
+  ],
+);
+
+/**
  * 游戏时钟：单行（id = 'main'），整数游戏分钟，只增不减（单调性由存档层的 advance 保证，
  * 这里的约束只兜底非负）。与 world_clock（现实时间高水位）无关。
  */

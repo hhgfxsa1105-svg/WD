@@ -16,7 +16,7 @@ import {
   SubmitActionRequestSchema,
   WorldTimeResponseSchema,
 } from '@jhz/contracts';
-import { eventViews, joinEvent, newsList } from './world-events/service.js';
+import { eventViews, factionsView, joinEvent, newsList } from './world-events/service.js';
 import { LOCATION_DEFS, gameDate, NPC_DEFS, REGION_DEFS, isLocationId, isNpcId, locationName, moveCost, neighborsOf, selectMemories } from '@jhz/game-rules';
 import { z } from 'zod';
 import { AppError, parseWith } from '../shared/errors.js';
@@ -118,6 +118,9 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
 
   // 世界事件（只读）：已放出传闻的、进行中的和已过去的；还没有风声的事件不可见
   app.get('/api/v1/world/events', async () => WorldEventsResponseSchema.parse({ events: store.read((tx) => eventViews(tx)) }));
+
+  // 势力现状与近期历史（只读）：只含已了结事件造成的变化，不会透露还没发生的事
+  app.get('/api/v1/world/factions', async () => store.read((tx) => factionsView(tx)));
 
   // 传闻与新闻（只读），最新的在前
   app.get('/api/v1/world/news', async (req) => {

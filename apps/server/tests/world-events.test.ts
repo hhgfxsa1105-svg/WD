@@ -266,8 +266,8 @@ describe('世界效果：共享状态', () => {
 describe('大跨度推进与调度上限', () => {
   it('一次跨过全部事件：每个事件只发生一次，按开始时间依次处理，错过的传闻不补发', async () => {
     const g = await game();
-    g.goto(def(REOPEN).startAt + 5000);
-    expect(SYSTEM_EVENT_DEFS.map((d) => g.state(d.id).state)).toEqual(['missed', 'resolved', 'missed', 'resolved']);
+    g.goto(def(MARKET).startAt + def(MARKET).windowMinutes + 10); // 集市窗口结束之后；黑风寨事件链从第 4 天才开始，这里不涉及
+    expect([CLASS, REPAIR, MARKET, REOPEN].map((id) => g.state(id).state)).toEqual(['missed', 'resolved', 'missed', 'resolved']);
     const ns = await g.news();
     expect(ns.filter((n) => n.kind === 'rumor')).toHaveLength(0);
     expect(ns.filter((n) => n.kind === 'news')).toHaveLength(4);
@@ -276,7 +276,7 @@ describe('大跨度推进与调度上限', () => {
     expect(order).toEqual([def(CLASS).resolved, def(REPAIR).resolved, def(MARKET).resolved, def(REOPEN).resolved]);
     expect(g.store.read((tx) => tx.locations().find((l) => l.id === LIBRARY))!.status).toBe('open'); // 先封后开，最终开放
     // 再调度也没有新变化
-    g.goto(def(REOPEN).startAt + 6000);
+    g.goto(def(MARKET).startAt + def(MARKET).windowMinutes + 20);
     expect(await g.news()).toHaveLength(4);
   });
   it('单次调度上限：超出的留到下一次，最终全部处理且每个事件只处理一次', async () => {
@@ -358,7 +358,7 @@ describe('审计：事件相关的每个变更都有可重放的差异', () => {
     const app = await buildApp({ store, clock: { now: () => T0 }, rng: fixedRng(0) });
     const { snapshot } = await import('../src/modules/audit/diff.js');
     type Snap = Record<string, unknown>;
-    const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests', 'locations', 'worldEvents'];
+    const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests', 'locations', 'worldEvents', 'factions', 'factionRelations'];
     const initial = store.read((tx) => snapshot(tx)) as Snap;
     const tick = (to: number) =>
       store.transact((tx) => {

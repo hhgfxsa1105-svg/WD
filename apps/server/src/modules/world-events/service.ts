@@ -1,20 +1,28 @@
 import {
+  FactionsResponseSchema,
   JoinEventResponseSchema,
   WorldEventViewSchema,
+  type FactionsResponse,
   type JoinEventResponse,
   type NewsItem,
   type StateChange,
   type WorldEventView,
 } from '@jhz/contracts';
 import {
+  FACTION_DEFS,
   LOCATION_DEFS,
   MAX_EVENT_TRANSITIONS_PER_TICK,
+  attitudeLabel,
+  isFactionId,
+  relationLabel,
+  strengthLabel,
   SYSTEM_EVENT_DEFS,
   applyPlayerEffects,
   eventEndsAt,
   gameDate,
   isLocationId,
   planSteps,
+  resolveOutcome,
   type EventStep,
   type SystemEventDef,
 } from '@jhz/game-rules';
@@ -40,9 +48,21 @@ export interface TickOptions {
   maxTransitions?: number;
 }
 
-/** 世界效果：只能通过共享的世界状态（地点开放/封锁）产生，无论玩家是否参加都会发生 */
-function applyWorldEffects(tx: GameTx, def: SystemEventDef): void {
-  for (const w of def.worldEffects) tx.setLocationStatus(w.locationId, w.status, w.status === 'blocked' ? (w.reason ?? null) : null);
+/**
+ * 事件了结：按「玩家是否参加 + 前序事件的结果 + 势力现状」得出结局（resolveOutcome，确定性），
+ * 然后应用世界影响（地点开放/封锁）与势力影响，并把势力的实际变化记入历史。返回结果新闻的文字。
+ * 两条轨道只通过这些共享的世界状态互相影响。
+ */
+function settleEvent(tx: GameTx, def: SystemEventDef, joined: boolean, at: number): string {
+  const outcome = resolveOutcome(def, {
+    joined,
+    events: Object.fromEntries(tx.worldEvents().map((e) => [e.id, { state: e.state, participated: e.participated }])),
+    factionStrength: Object.fromEntries(tx.factions().map((f) => [f.id, f.strength])),
+  });
+  for (const w of outcome.worldEffects) tx.setLocationStatus(w.locationId, w.status, w.status === 'blocked' ? (w.reason ?? null) : null);
+  const changes = tx.applyFactionEffects(outcome.factionEffects);
+  if (changes.length > 0) tx.addFactionHistory({ eventId: def.id, gameMinutes: at, text: outcome.news, changes });
+  return outcome.news;
 }
 
 /**
@@ -84,9 +104,9 @@ function applyStep(tx: GameTx, def: SystemEventDef, step: EventStep, opts: TickO
   } else {
     const endedAt = Math.min(now, eventEndsAt(def));
     tx.updateWorldEvent(def.id, { state: def.join ? 'missed' : 'resolved', resolvedAt: endedAt });
-    applyWorldEffects(tx, def);
-    tx.addNews({ eventId: def.id, kind: 'news', text: def.resolved, gameMinutes: endedAt, participated: false });
-    log = newsLog(def.resolved, '新闻');
+    const text = settleEvent(tx, def, false, endedAt);
+    tx.addNews({ eventId: def.id, kind: 'news', text, gameMinutes: endedAt, participated: false });
+    log = newsLog(text, '新闻');
   }
   const diff = stateDiff(before, snapshot(tx));
   tx.appendEvent({ actionId: opts.actionId, eventType: `world.event.${step.kind}`, before: diff?.before ?? null, after: diff?.after ?? null, at: opts.at, log });
@@ -98,6 +118,7 @@ const when = (minutes: number) => ({ minutes, label: gameDate(minutes).label });
 export function eventViews(tx: GameTx, defs: Defs = SYSTEM_EVENT_DEFS): WorldEventView[] {
   const rows = new Map(tx.worldEvents().map((e) => [e.id, e]));
   const here = tx.player().location.id;
+  const resultText = new Map(tx.news().filter((n) => n.kind === 'news').map((n) => [n.eventId, n.text]));
   const views: WorldEventView[] = [];
   for (const def of sortedDefs(defs)) {
     const row = rows.get(def.id);
@@ -112,7 +133,8 @@ export function eventViews(tx: GameTx, defs: Defs = SYSTEM_EVENT_DEFS): WorldEve
       const atPlace = !def.locationId || def.locationId === here;
       views.push(WorldEventViewSchema.parse({ ...base, title: def.title, summary: def.opening, location, closesAt: when(eventEndsAt(def)), canJoin: atPlace, joinBlockedReason: atPlace ? null : `你不在现场，要去${location!.name}` }));
     } else {
-      const summary = row.participated && def.join ? def.join.news : def.resolved;
+      // 结果以当时发布的新闻为准（结局可能因前序事件而不同）
+      const summary = resultText.get(def.id) ?? def.resolved;
       views.push(WorldEventViewSchema.parse({ ...base, title: def.title, summary, location, closesAt: null, canJoin: false, joinBlockedReason: null }));
     }
   }
@@ -120,6 +142,38 @@ export function eventViews(tx: GameTx, defs: Defs = SYSTEM_EVENT_DEFS): WorldEve
 }
 
 export const newsList = (tx: GameTx, limit = 50): NewsItem[] => tx.news(limit).reverse();
+
+const facName = (id: string) => (isFactionId(id) ? FACTION_DEFS[id].name : id);
+
+/** 势力现状与近期历史（只读）：实力与态度用描述加数值，历史最近的在前 */
+export function factionsView(tx: GameTx, defs: Defs = SYSTEM_EVENT_DEFS, limit = 30): FactionsResponse {
+  const title = new Map(defs.map((d) => [d.id, d.title]));
+  return FactionsResponseSchema.parse({
+    factions: tx.factions().map((f) => ({
+      id: f.id,
+      name: facName(f.id),
+      summary: isFactionId(f.id) ? FACTION_DEFS[f.id].summary : '',
+      strength: f.strength,
+      strengthLabel: strengthLabel(f.strength),
+      attitude: f.attitude,
+      attitudeLabel: attitudeLabel(f.attitude),
+    })),
+    relations: tx.factionRelations().map((r) => ({ a: r.a, b: r.b, aName: facName(r.a), bName: facName(r.b), value: r.value, label: relationLabel(r.value) })),
+    history: tx
+      .factionHistory(limit)
+      .reverse()
+      .map((h) => ({
+        eventId: h.eventId,
+        title: title.get(h.eventId) ?? h.eventId,
+        gameMinutes: h.gameMinutes,
+        when: gameDate(h.gameMinutes).label,
+        text: h.text,
+        changes: h.changes.map((c) =>
+          c.kind === 'relation' ? `${facName(c.faction)}与${facName(c.other!)} 关系 ${c.from} → ${c.to}` : `${facName(c.faction)} ${c.kind === 'strength' ? '实力' : '对你的态度'} ${c.from} → ${c.to}`,
+        ),
+      })),
+  });
+}
 
 /**
  * 玩家到场参加一个正在进行的事件：必须 open、人在事件地点。
@@ -144,8 +198,8 @@ export function joinEvent(store: GameStore, eventId: string, at: number, defs: D
     tx.advanceGameClock(def.join.minutes);
     const now = tx.gameMinutes();
     tx.updateWorldEvent(def.id, { state: 'resolved', participated: true, resolvedAt: now });
-    applyWorldEffects(tx, def);
-    tx.addNews({ eventId: def.id, kind: 'news', text: def.join.news, gameMinutes: now, participated: true });
+    const newsText = settleEvent(tx, def, true, now);
+    tx.addNews({ eventId: def.id, kind: 'news', text: newsText, gameMinutes: now, participated: true });
     const changes: StateChange[] = effects.changes;
     const diff = stateDiff(before, snapshot(tx));
     const log = tx.appendEvent({

@@ -1,5 +1,5 @@
-import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LocationState, LogRecord, NewsItem, WorldEventRecord, NpcMemory, NpcState, PlayerState, QuestState, QuestStatus, Relationship } from '@jhz/contracts';
-import type { LocationStatus, MemoryEventKind, NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
+import type { ActionResponse, ActionStatus, AuditEvent, FactionChange, FactionHistory, FactionRelation, FactionState, InventoryItem, LocationState, LogRecord, NewsItem, WorldEventRecord, NpcMemory, NpcState, PlayerState, QuestState, QuestStatus, Relationship } from '@jhz/contracts';
+import type { FactionEffect, LocationStatus, MemoryEventKind, NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
 
 export interface CultivationJobRecord {
   id: string;
@@ -97,6 +97,20 @@ export interface GameTx {
   news(limit?: number): NewsItem[];
   /** 追加一条传闻或新闻：同一事件同一种类只能有一条（重复 CONFLICT）；事件不存在 NOT_FOUND */
   addNews(input: { eventId: string; kind: NewsItem['kind']; text: string; gameMinutes: number; participated: boolean }): NewsItem;
+
+  /** 全部势力的可变状态（名字、简介来自静态定义） */
+  factions(): FactionState[];
+  /** 势力之间的关系（a < b） */
+  factionRelations(): FactionRelation[];
+  /**
+   * 应用一组势力影响（单次每项限幅 ±MAX_FACTION_DELTA 并夹回范围），返回实际发生的变化；
+   * 势力或关系不存在抛 NOT_FOUND
+   */
+  applyFactionEffects(effects: readonly FactionEffect[]): FactionChange[];
+  /** 势力历史，按发生顺序；limit 只取最近的若干条 */
+  factionHistory(limit?: number): FactionHistory[];
+  /** 记录一个事件造成的势力变化：每个事件只能记一次（重复 CONFLICT）；事件不存在 NOT_FOUND；changes 不能为空 */
+  addFactionHistory(input: { eventId: string; gameMinutes: number; text: string; changes: FactionChange[] }): FactionHistory;
 
   /** 全部任务的可变状态（名字、步骤、奖励来自静态定义） */
   quests(): QuestState[];

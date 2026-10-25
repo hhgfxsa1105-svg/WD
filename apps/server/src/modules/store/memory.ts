@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { NewsItemSchema, LocationStateSchema, LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type LocationState, type NewsItem, type NpcMemory, type NpcState, type WorldEventRecord, type PlayerState, type Relationship } from '@jhz/contracts';
+import { FactionHistorySchema, type FactionHistory, type FactionRelation, type FactionState, NewsItemSchema, LocationStateSchema, LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type LocationState, type NewsItem, type NpcMemory, type NpcState, type WorldEventRecord, type PlayerState, type Relationship } from '@jhz/contracts';
 import { INITIAL_GAME_MINUTES, INITIAL_INVENTORY, MAX_ADVANCE_MINUTES, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
-import { applyEventPatch, initialWorldEvent, initialWorldEvents, initialLocations, normalizeLocationStatus, relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
+import { relationKey as factionRelationKey } from '@jhz/game-rules';
+import { computeFactionEffects, initialFactionRelations, initialFactions, applyEventPatch, initialWorldEvent, initialWorldEvents, initialLocations, normalizeLocationStatus, relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 interface State {
@@ -18,6 +19,9 @@ interface State {
   gameMinutes: number;
   worldEvents: Map<string, WorldEventRecord>;
   news: NewsItem[];
+  factions: Map<string, FactionState>;
+  factionRelations: Map<string, FactionRelation>;
+  factionHistory: FactionHistory[];
   events: (AuditEvent & { log: LogRecord | null })[];
   seq: number;
 }
@@ -35,6 +39,9 @@ const cloneState = (s: State): State => ({
   gameMinutes: s.gameMinutes,
   worldEvents: new Map([...s.worldEvents].map(([k, v]) => [k, { ...v }])),
   news: structuredClone(s.news),
+  factions: new Map([...s.factions].map(([k, v]) => [k, { ...v }])),
+  factionRelations: new Map([...s.factionRelations].map(([k, v]) => [k, { ...v }])),
+  factionHistory: structuredClone(s.factionHistory),
   events: structuredClone(s.events),
   seq: s.seq,
 });
@@ -86,6 +93,22 @@ function makeTx(s: State): GameTx {
       return { ...next };
     },
     news: (limit) => structuredClone(limit === undefined ? s.news : s.news.slice(-limit)),
+    factions: () => [...s.factions.values()].map((f) => ({ ...f })).sort((x, y) => x.id.localeCompare(y.id)),
+    factionRelations: () => [...s.factionRelations.values()].map((r) => ({ ...r })).sort((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b)),
+    applyFactionEffects(effects) {
+      const r = computeFactionEffects([...s.factions.values()], [...s.factionRelations.values()], effects);
+      for (const f of r.factions) s.factions.set(f.id, f);
+      for (const x of r.relations) s.factionRelations.set(factionRelationKey(x.a, x.b), x);
+      return r.changes;
+    },
+    factionHistory: (limit) => structuredClone(limit === undefined ? s.factionHistory : s.factionHistory.slice(-limit)),
+    addFactionHistory(input) {
+      if (!s.worldEvents.has(input.eventId)) throw new AppError('NOT_FOUND', '没有这个事件');
+      if (s.factionHistory.some((h) => h.eventId === input.eventId)) throw new AppError('CONFLICT', '这个事件的势力变化已经记录过');
+      const item = FactionHistorySchema.parse({ id: randomUUID(), ...input });
+      s.factionHistory.push(item);
+      return structuredClone(item);
+    },
     addNews(input) {
       if (!s.worldEvents.has(input.eventId)) throw new AppError('NOT_FOUND', '没有这个事件');
       if (s.news.some((n) => n.eventId === input.eventId && n.kind === input.kind)) throw new AppError('CONFLICT', '这条消息已经发布过');
@@ -240,6 +263,9 @@ export function createMemoryGameStore(initial: PlayerState = createInitialPlayer
     gameMinutes: INITIAL_GAME_MINUTES,
     worldEvents: new Map(initialWorldEvents().map((e) => [e.id, e])),
     news: [],
+    factions: new Map(initialFactions().map((f) => [f.id, f])),
+    factionRelations: new Map(initialFactionRelations().map((r) => [factionRelationKey(r.a, r.b), r])),
+    factionHistory: [],
     relations: new Map(initialRelationships().map((r) => [relationKey(r.npcId, r.targetType, r.targetId), r])),
     events: [],
     seq: 0,

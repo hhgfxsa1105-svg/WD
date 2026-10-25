@@ -11,6 +11,7 @@ export * from './ai-status.js';
 export * from './inventory.js';
 export * from './cultivation.js';
 export * from './event.js';
+export * from './faction.js';
 export * from './location.js';
 export * from './log.js';
 export * from './audit.js';

@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, count, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import {
   ActionResponseSchema,
+  FactionHistorySchema,
+  FactionRelationSchema,
+  FactionStateSchema,
   LocationStateSchema,
   LogRecordSchema,
   NewsItemSchema,
@@ -11,6 +14,9 @@ import {
   RelationshipSchema,
   WorldEventRecordSchema,
   type AuditEvent,
+  type FactionHistory,
+  type FactionRelation,
+  type FactionState,
   type Honorific,
   type LocationState,
   type LogRecord,
@@ -23,9 +29,9 @@ import {
 } from '@jhz/contracts';
 import { INITIAL_GAME_MINUTES, INITIAL_INVENTORY, MAX_ADVANCE_MINUTES, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import type { Db } from '../../db/connection.js';
-import { actions, aiCallLogs, auditEvents, cultivationJobs, gameClock, inventory, locations, news, worldEvents, npcMemories, npcRelationships, npcs, playerStates, quests, players, worldClock } from '../../db/schema.js';
+import { actions, aiCallLogs, auditEvents, cultivationJobs, factionHistory, factionRelations, factions, gameClock, inventory, locations, news, worldEvents, npcMemories, npcRelationships, npcs, playerStates, quests, players, worldClock } from '../../db/schema.js';
 import { AppError } from '../../shared/errors.js';
-import { applyEventPatch, initialWorldEvent, initialWorldEvents, initialLocations, mergeImportedLocations, normalizeLocationStatus, relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, relationKey, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship } from './world-rules.js';
+import { computeFactionEffects, initialFactionRelations, initialFactions, applyEventPatch, initialWorldEvent, initialWorldEvents, initialLocations, mergeImportedLocations, normalizeLocationStatus, relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, relationKey, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 /** 单机固定的玩家 ID */
@@ -179,6 +185,22 @@ function makeTx(db: Executor): GameTx {
       return n;
     },
     news: (limit) => readNews(db, limit),
+    factions: () => readFactions(db),
+    factionRelations: () => readFactionRelations(db),
+    applyFactionEffects(effects) {
+      const r = computeFactionEffects(readFactions(db), readFactionRelations(db), effects);
+      for (const f of r.factions) db.update(factions).set({ strength: f.strength, attitude: f.attitude, updatedAt: Date.now() }).where(eq(factions.id, f.id)).run();
+      for (const x of r.relations) db.update(factionRelations).set({ value: x.value, updatedAt: Date.now() }).where(and(eq(factionRelations.a, x.a), eq(factionRelations.b, x.b))).run();
+      return r.changes;
+    },
+    factionHistory: (limit) => readFactionHistory(db, limit),
+    addFactionHistory(input) {
+      if (!db.select({ id: worldEvents.id }).from(worldEvents).where(eq(worldEvents.id, input.eventId)).get()) throw new AppError('NOT_FOUND', '没有这个事件');
+      if (db.select({ id: factionHistory.id }).from(factionHistory).where(eq(factionHistory.eventId, input.eventId)).get()) throw new AppError('CONFLICT', '这个事件的势力变化已经记录过');
+      const item = FactionHistorySchema.parse({ id: randomUUID(), ...input });
+      db.insert(factionHistory).values({ id: item.id, eventId: item.eventId, gameMinutes: item.gameMinutes, text: item.text, changesJson: JSON.stringify(item.changes) }).run();
+      return item;
+    },
     addNews(input) {
       if (!db.select({ id: worldEvents.id }).from(worldEvents).where(eq(worldEvents.id, input.eventId)).get()) throw new AppError('NOT_FOUND', '没有这个事件');
       const dup = db.select({ id: news.id }).from(news).where(and(eq(news.eventId, input.eventId), eq(news.kind, input.kind))).get();
@@ -416,6 +438,19 @@ function readNews(db: Executor, limit?: number): NewsItem[] {
   return rows.map((r) => NewsItemSchema.parse({ id: r.id, eventId: r.eventId, kind: r.kind, text: r.text, gameMinutes: r.gameMinutes, participated: r.participated === 1 }));
 }
 
+function readFactions(db: Executor): FactionState[] {
+  return db.select().from(factions).orderBy(asc(factions.id)).all().map((r) => FactionStateSchema.parse({ id: r.id, strength: r.strength, attitude: r.attitude }));
+}
+
+function readFactionRelations(db: Executor): FactionRelation[] {
+  return db.select().from(factionRelations).orderBy(asc(factionRelations.a), asc(factionRelations.b)).all().map((r) => FactionRelationSchema.parse({ a: r.a, b: r.b, value: r.value }));
+}
+
+function readFactionHistory(db: Executor, limit?: number): FactionHistory[] {
+  const rows = db.select().from(factionHistory).orderBy(desc(factionHistory.seq)).limit(limit ?? 100_000).all().reverse();
+  return rows.map((r) => FactionHistorySchema.parse({ id: r.id, eventId: r.eventId, gameMinutes: r.gameMinutes, text: r.text, changes: JSON.parse(r.changesJson) }));
+}
+
 function readGameMinutes(db: Executor): number {
   const row = db.select({ minutes: gameClock.minutes }).from(gameClock).where(eq(gameClock.id, 'main')).get();
   if (!row) throw new AppError('INTERNAL_ERROR', '游戏时钟缺失');
@@ -482,7 +517,7 @@ export function writePlayerState(db: Db, state: PlayerState): void {
 }
 
 /** 覆盖写入 NPC 状态与关系（导入存档用）；world 为 null 表示重置为初始。世界数据须已通过 mergeImportedWorld 校验 */
-export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; locations?: LocationState[]; gameMinutes?: number; events?: WorldEventRecord[]; news?: NewsItem[]; inventory?: { itemId: string; quantity: number }[] | null } | null, importEventId?: string, currentLocationId = 'loc_qingyun_gate'): void {
+export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; locations?: LocationState[]; gameMinutes?: number; events?: WorldEventRecord[]; news?: NewsItem[]; factions?: FactionState[]; factionRelations?: FactionRelation[]; factionHistory?: FactionHistory[]; inventory?: { itemId: string; quantity: number }[] | null } | null, importEventId?: string, currentLocationId = 'loc_qingyun_gate'): void {
   if (world?.memories.some((m) => m.type !== 'summary') && !importEventId) throw new Error('导入带事件的记忆需要提供导入事件 ID');
   const w = world ?? { npcs: initialNpcs(), relationships: initialRelationships(), memories: [], quests: initialQuestRecords() };
   db.transaction(
@@ -500,10 +535,16 @@ export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships
         for (const it of world.inventory) tx.insert(inventory).values({ playerId: PLAYER_ID, itemId: it.itemId, quantity: it.quantity }).run();
       }
       tx.update(gameClock).set({ minutes: world?.gameMinutes ?? INITIAL_GAME_MINUTES, updatedAt: Date.now() }).where(eq(gameClock.id, 'main')).run();
+      tx.delete(factionHistory).run();
+      tx.delete(factionRelations).run();
+      tx.delete(factions).run();
+      for (const f of world?.factions ?? initialFactions()) tx.insert(factions).values({ id: f.id, strength: f.strength, attitude: f.attitude }).run();
+      for (const r of world?.factionRelations ?? initialFactionRelations()) tx.insert(factionRelations).values({ a: r.a, b: r.b, value: r.value }).run();
       tx.delete(news).run();
       tx.delete(worldEvents).run();
       for (const e of world?.events ?? initialWorldEvents()) tx.insert(worldEvents).values({ id: e.id, state: e.state, rumored: e.rumored ? 1 : 0, participated: e.participated ? 1 : 0, resolvedAt: e.resolvedAt }).run();
       for (const n of world?.news ?? []) tx.insert(news).values({ id: n.id, eventId: n.eventId, kind: n.kind, text: n.text, gameMinutes: n.gameMinutes, participated: n.participated ? 1 : 0 }).run();
+      for (const h of world?.factionHistory ?? []) tx.insert(factionHistory).values({ id: h.id, eventId: h.eventId, gameMinutes: h.gameMinutes, text: h.text, changesJson: JSON.stringify(h.changes) }).run();
       tx.delete(locations).run();
       for (const l of world?.locations ?? mergeImportedLocations([], currentLocationId)) tx.insert(locations).values({ id: l.id, status: l.status, reason: l.reason, visited: l.visited ? 1 : 0 }).run();
       tx.delete(quests).run();
@@ -542,6 +583,8 @@ export function ensureSeed(db: Db, initial: PlayerState = createInitialPlayer())
         tx.insert(quests).values(q).onConflictDoNothing().run();
       }
       tx.insert(gameClock).values({ id: 'main', minutes: INITIAL_GAME_MINUTES }).onConflictDoNothing().run();
+      for (const f of initialFactions()) tx.insert(factions).values({ id: f.id, strength: f.strength, attitude: f.attitude }).onConflictDoNothing().run();
+      for (const r of initialFactionRelations()) tx.insert(factionRelations).values({ a: r.a, b: r.b, value: r.value }).onConflictDoNothing().run();
       for (const e of initialWorldEvents()) tx.insert(worldEvents).values({ id: e.id, state: e.state, rumored: 0, participated: 0, resolvedAt: null }).onConflictDoNothing().run();
       for (const l of initialLocations()) {
         tx.insert(locations).values({ id: l.id, status: l.status, reason: l.reason, visited: l.visited ? 1 : 0 }).onConflictDoNothing().run();
