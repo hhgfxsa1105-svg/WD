@@ -14,7 +14,7 @@ import {
   SubmitActionRequestSchema,
   WorldTimeResponseSchema,
 } from '@jhz/contracts';
-import { LOCATION_DEFS, NPC_DEFS, REGION_DEFS, isLocationId, isNpcId, locationName, moveCost, neighborsOf, selectMemories } from '@jhz/game-rules';
+import { LOCATION_DEFS, gameDate, NPC_DEFS, REGION_DEFS, isLocationId, isNpcId, locationName, moveCost, neighborsOf, selectMemories } from '@jhz/game-rules';
 import { z } from 'zod';
 import { AppError, parseWith } from '../shared/errors.js';
 import type { ActionService } from './action/service.js';
@@ -55,6 +55,11 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
         efficiencyPercent: Math.round(cultivation.policy.efficiency * 100),
       },
       clockBehindMs: clockBehindMs(),
+      game: store.read((tx) => {
+        const minutes = tx.gameMinutes();
+        const d = gameDate(minutes);
+        return { minutes, day: d.day, shichen: d.shichen, label: d.label };
+      }),
     }),
   );
 

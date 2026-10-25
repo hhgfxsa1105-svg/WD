@@ -11,7 +11,7 @@ import {
   type ActionResponse,
   type PlayerState,
 } from '@jhz/contracts';
-import { createInitialPlayer, fixedRng } from '@jhz/game-rules';
+import { INITIAL_GAME_MINUTES, createInitialPlayer, fixedRng } from '@jhz/game-rules';
 import { buildApp } from '../src/app.js';
 import { openDatabase, type Database_ } from '../src/db/connection.js';
 import { runMigrations } from '../src/db/migrate.js';
@@ -59,8 +59,9 @@ describe('审计事件：前后差异与实际一致', () => {
     expect(ev.eventType).toBe('action.cultivate');
     expect(ev.actionId).toBe(res.actionId);
     expect(ev.at).toBe(T0);
-    expect(ev.before).toEqual({ stamina: 50, realmProgress: 0, version: 0 });
-    expect(ev.after).toEqual({ stamina: res.player.stamina, realmProgress: res.player.realmProgress, version: 1 });
+    // 修炼耗时 60 游戏分钟，游戏时钟的变化也在差异里
+    expect(ev.before).toEqual({ stamina: 50, realmProgress: 0, version: 0, gameMinutes: INITIAL_GAME_MINUTES });
+    expect(ev.after).toEqual({ stamina: res.player.stamina, realmProgress: res.player.realmProgress, version: 1, gameMinutes: INITIAL_GAME_MINUTES + 60 });
     expect(ev.after).not.toHaveProperty('displayName'); // 未变化的字段不记录
   });
 

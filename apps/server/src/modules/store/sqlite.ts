@@ -17,9 +17,9 @@ import {
   type PlayerState,
   type Relationship,
 } from '@jhz/contracts';
-import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
+import { INITIAL_GAME_MINUTES, INITIAL_INVENTORY, MAX_ADVANCE_MINUTES, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import type { Db } from '../../db/connection.js';
-import { actions, aiCallLogs, auditEvents, cultivationJobs, inventory, locations, npcMemories, npcRelationships, npcs, playerStates, quests, players, worldClock } from '../../db/schema.js';
+import { actions, aiCallLogs, auditEvents, cultivationJobs, gameClock, inventory, locations, npcMemories, npcRelationships, npcs, playerStates, quests, players, worldClock } from '../../db/schema.js';
 import { AppError } from '../../shared/errors.js';
 import { initialLocations, mergeImportedLocations, normalizeLocationStatus, relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, relationKey, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
@@ -160,6 +160,13 @@ function makeTx(db: Executor): GameTx {
         .run();
     },
 
+    gameMinutes: () => readGameMinutes(db),
+    advanceGameClock(minutes) {
+      if (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_ADVANCE_MINUTES) throw new AppError('VALIDATION_FAILED', `游戏时间只能向前推进 0 到 ${MAX_ADVANCE_MINUTES} 分钟`);
+      const next = readGameMinutes(db) + minutes;
+      db.update(gameClock).set({ minutes: next, updatedAt: Date.now() }).where(eq(gameClock.id, 'main')).run();
+      return next;
+    },
     locations: () => readLocations(db),
     setLocationStatus(id, status, reason) {
       assertLocation(id);
@@ -295,7 +302,7 @@ function makeTx(db: Executor): GameTx {
         .returning({ seq: auditEvents.seq })
         .get();
       if (!input.log) return null;
-      const log = LogRecordSchema.parse({ ...input.log, id: row.seq, at: input.at });
+      const log = LogRecordSchema.parse({ ...input.log, id: row.seq, at: input.at, gameMinutes: readGameMinutes(db) });
       db.update(auditEvents).set({ logJson: JSON.stringify(log) }).where(eq(auditEvents.seq, row.seq)).run();
       return log;
     },
@@ -369,6 +376,12 @@ function readNpcs(db: Executor): NpcState[] {
     .map((r) => NpcStateSchema.parse({ id: r.id, locationId: r.locationId, status: r.status, goals: JSON.parse(r.goalsJson) }));
 }
 
+function readGameMinutes(db: Executor): number {
+  const row = db.select({ minutes: gameClock.minutes }).from(gameClock).where(eq(gameClock.id, 'main')).get();
+  if (!row) throw new AppError('INTERNAL_ERROR', '游戏时钟缺失');
+  return row.minutes;
+}
+
 function readLocations(db: Executor): LocationState[] {
   return db
     .select()
@@ -429,7 +442,7 @@ export function writePlayerState(db: Db, state: PlayerState): void {
 }
 
 /** 覆盖写入 NPC 状态与关系（导入存档用）；world 为 null 表示重置为初始。世界数据须已通过 mergeImportedWorld 校验 */
-export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; locations?: LocationState[]; inventory?: { itemId: string; quantity: number }[] | null } | null, importEventId?: string, currentLocationId = 'loc_qingyun_gate'): void {
+export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; locations?: LocationState[]; gameMinutes?: number; inventory?: { itemId: string; quantity: number }[] | null } | null, importEventId?: string, currentLocationId = 'loc_qingyun_gate'): void {
   if (world?.memories.some((m) => m.type !== 'summary') && !importEventId) throw new Error('导入带事件的记忆需要提供导入事件 ID');
   const w = world ?? { npcs: initialNpcs(), relationships: initialRelationships(), memories: [], quests: initialQuestRecords() };
   db.transaction(
@@ -446,6 +459,7 @@ export function writeWorldState(db: Db, world: { npcs: NpcState[]; relationships
         tx.delete(inventory).where(eq(inventory.playerId, PLAYER_ID)).run();
         for (const it of world.inventory) tx.insert(inventory).values({ playerId: PLAYER_ID, itemId: it.itemId, quantity: it.quantity }).run();
       }
+      tx.update(gameClock).set({ minutes: world?.gameMinutes ?? INITIAL_GAME_MINUTES, updatedAt: Date.now() }).where(eq(gameClock.id, 'main')).run();
       tx.delete(locations).run();
       for (const l of world?.locations ?? mergeImportedLocations([], currentLocationId)) tx.insert(locations).values({ id: l.id, status: l.status, reason: l.reason, visited: l.visited ? 1 : 0 }).run();
       tx.delete(quests).run();
@@ -483,6 +497,7 @@ export function ensureSeed(db: Db, initial: PlayerState = createInitialPlayer())
       for (const q of initialQuestRecords()) {
         tx.insert(quests).values(q).onConflictDoNothing().run();
       }
+      tx.insert(gameClock).values({ id: 'main', minutes: INITIAL_GAME_MINUTES }).onConflictDoNothing().run();
       for (const l of initialLocations()) {
         tx.insert(locations).values({ id: l.id, status: l.status, reason: l.reason, visited: l.visited ? 1 : 0 }).onConflictDoNothing().run();
       }

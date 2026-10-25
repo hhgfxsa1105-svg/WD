@@ -6,7 +6,7 @@
 |---|---|
 | `GET /health` | 健康检查 |
 | `GET /ai/status` | AI 功能状态：是否启用、模型名、未启用原因、每日额度与已用次数；**不含任何密钥与地址** |
-| `GET /world/time` | 服务端时间、离线规则（阈值/上限/效率）、`clockBehindMs`（系统时间落后游戏时间的时长，正常为 0） |
+| `GET /world/time` | 现实服务端时间（放置修炼倒计时用）、离线规则（阈值/上限/效率）、`clockBehindMs`（系统时间落后高水位的时长，正常为 0），以及 `game`：游戏时间 `{minutes, day, shichen, label}`，只由玩家行动和放置修炼推进，与现实时间无关 |
 | `GET /player/state` | 当前角色 |
 | `GET /player/inventory` | 背包（名称、评级、数量；数量为 0 的不返回） |
 | `POST /actions` | 提交行动，必带 `idempotencyKey`。`kind`：`fixed`（`actionId`: `cultivate`/`rest`）、`breakthrough`（`pillItemId`: 突破丹药物品 ID 或 `null`）、`free`（`input`: 玩家原话，由 AI 解析，见 `docs/ai-contract.md`）、`move`（`locationId`: 相邻地点 ID）、`quest`（`questId`、`op`: `accept` / `claim` / `abandon`） |

@@ -12,7 +12,6 @@ import { LogPanel } from './components/LogPanel';
 import { Sheet } from './components/Sheet';
 import { SideRail } from './components/SideRail';
 import { aiView } from './ai';
-import { hourLabel } from './log';
 import { questNeedsAttention } from './npc';
 import { useGame } from './useGame';
 
@@ -55,7 +54,7 @@ export function App() {
       <SideRail unreadMessages questAlert={questNeedsAttention(g.quests)} onOpen={toggle} />
       <main className="col">
         <CharacterCard player={g.player} />
-        <LocationBar location={g.player.location} time={`晴 · ${hourLabel(g.log.length - 1)}`} />
+        <LocationBar location={g.player.location} time={`晴 · ${g.world?.game.label ?? ''}`} />
         <LogPanel entries={g.log} ai={ai} onRetryNarration={g.retryNarration} />
         <BottomNav active={sheet && isNavItem(sheet) ? sheet : null} onOpen={toggle} />
         {sheet && (

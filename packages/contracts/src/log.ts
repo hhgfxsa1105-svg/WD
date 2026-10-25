@@ -11,6 +11,8 @@ export const LogRecordSchema = z
     id: z.number().int().min(1),
     /** 服务端时间，毫秒时间戳 */
     at: z.number().int().min(0),
+    /** 事件发生时的游戏时间（游戏分钟）；旧记录没有，为 null */
+    gameMinutes: z.number().int().min(0).nullable().default(null),
     type: LogTypeSchema,
     narrative: z.string().max(4000),
     changes: z

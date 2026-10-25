@@ -11,6 +11,7 @@ export function snapshot(tx: GameTx): Snapshot {
   const qty = new Map(tx.inventory().map((i) => [i.itemId, i.quantity]));
   return {
     ...tx.player(),
+    gameMinutes: tx.gameMinutes(),
     inventory: Object.fromEntries(Object.keys(ITEM_DEFS).map((id) => [id, qty.get(id) ?? 0])),
     cultivation: tx.runningJob() ? 'running' : 'idle',
     npcs: Object.fromEntries(tx.npcs().map((n) => [n.id, { locationId: n.locationId, status: n.status, goals: n.goals }])),

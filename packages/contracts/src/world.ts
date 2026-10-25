@@ -15,6 +15,18 @@ export const WorldTimeResponseSchema = z
       .strict(),
     /** 系统时间被调到过去时，游戏时间暂停追平的时长；正常为 0 */
     clockBehindMs: z.number().int().min(0),
+    /** 游戏时间：只由玩家行动和放置修炼推进，与现实时间无关 */
+    game: z
+      .object({
+        /** 游戏分钟（第 1 天 00:00 起算） */
+        minutes: z.number().int().min(0),
+        day: z.number().int().min(1),
+        /** 时辰地支，如「巳」 */
+        shichen: z.string().min(1).max(2),
+        /** 展示文字，如「第 3 天 · 巳时」 */
+        label: z.string().min(1).max(32),
+      })
+      .strict(),
   })
   .strict();
 export type WorldTimeResponse = z.infer<typeof WorldTimeResponseSchema>;

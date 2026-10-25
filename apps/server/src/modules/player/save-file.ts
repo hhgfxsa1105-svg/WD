@@ -13,6 +13,8 @@ const WorldSchema = z
     quests: z.array(QuestStateSchema).max(200).default([]),
     /** 地点状态（封锁、是否去过）；缺省视为全部初始 */
     locations: z.array(LocationStateSchema).max(200).default([]),
+    /** 游戏时间（游戏分钟）。缺省 = 旧存档：突破冷却是现实毫秒时间，导入时折算 */
+    gameMinutes: z.number().int().min(0).optional(),
     /** 背包（物品 ID + 数量）；缺省表示不改动目标存档的背包 */
     inventory: z.array(z.object({ itemId: z.string().min(1).max(64), quantity: z.number().int().min(0).max(9999) }).strict()).max(200).optional(),
   })
@@ -28,12 +30,12 @@ export const SaveFileSchema = z.union([
 ]);
 export type SaveFile = z.infer<typeof SaveFileSchema>;
 
-export const buildSaveFile = (player: PlayerState, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestState[]; locations?: LocationState[]; inventory?: { itemId: string; quantity: number }[] }, now = new Date()): SaveFile => ({
+export const buildSaveFile = (player: PlayerState, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestState[]; locations?: LocationState[]; gameMinutes?: number; inventory?: { itemId: string; quantity: number }[] }, now = new Date()): SaveFile => ({
   format: SAVE_FORMAT,
   schemaVersion: 2,
   exportedAt: now.toISOString(),
   player,
-  world: { npcs: world.npcs, relationships: world.relationships, memories: world.memories, quests: world.quests, locations: world.locations ?? [], ...(world.inventory ? { inventory: world.inventory } : {}) },
+  world: { npcs: world.npcs, relationships: world.relationships, memories: world.memories, quests: world.quests, locations: world.locations ?? [], ...(world.gameMinutes !== undefined ? { gameMinutes: world.gameMinutes } : {}), ...(world.inventory ? { inventory: world.inventory } : {}) },
 });
 
 /** 解析存档文件；v1 的 world 为 null（导入时人物状态重置为初始） */

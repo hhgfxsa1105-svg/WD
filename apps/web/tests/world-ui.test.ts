@@ -76,11 +76,11 @@ describe('任务展示', () => {
 
 describe('系统日志条目也显示数值变化（如任务奖励）', () => {
   it('system 记录的 changes 渲染为标签，note 作为小字', () => {
-    const [e] = toLogEntries({ id: 9, at: 0, type: 'system', narrative: '任务「初入山门」完成，获得：铜钱 100。', changes: [{ stat: 'copper', delta: 100 }], breakthrough: null, idle: null, note: '赵铁牛笑了。' });
+    const [e] = toLogEntries({ id: 9, at: 0, gameMinutes: null, type: 'system', narrative: '任务「初入山门」完成，获得：铜钱 100。', changes: [{ stat: 'copper', delta: 100 }], breakthrough: null, idle: null, note: '赵铁牛笑了。' });
     expect(e!.chips).toEqual([{ text: '铜钱 +100', tone: 'up' }]);
     expect(e!.sub).toBe('赵铁牛笑了。');
     expect(e!.system).toBe(true);
-    const [plain] = toLogEntries({ id: 10, at: 0, type: 'system', narrative: '任务进度', changes: [], breakthrough: null, idle: null, note: null });
+    const [plain] = toLogEntries({ id: 10, at: 0, gameMinutes: null, type: 'system', narrative: '任务进度', changes: [], breakthrough: null, idle: null, note: null });
     expect(plain!.chips).toEqual([]);
   });
 });

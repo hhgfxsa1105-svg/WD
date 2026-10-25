@@ -317,6 +317,20 @@ export const DB_LOCATION_STATUSES = ['open', 'blocked'] as const;
 const locationStatusList = sql.raw(DB_LOCATION_STATUSES.map((r) => `'${r}'`).join(', '));
 
 /**
+ * 游戏时钟：单行（id = 'main'），整数游戏分钟，只增不减（单调性由存档层的 advance 保证，
+ * 这里的约束只兜底非负）。与 world_clock（现实时间高水位）无关。
+ */
+export const gameClock = sqliteTable(
+  'game_clock',
+  {
+    id: text('id').primaryKey(),
+    minutes: integer('minutes').notNull(),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [check('game_clock_single', sql`${t.id} = 'main'`), check('game_clock_nonneg', sql`${t.minutes} >= 0`)],
+);
+
+/**
  * 地点的可变状态（权威存档）。名字、地区、描述来自静态定义。
  * 约束：封锁当且仅当有原因（原因 ≤60 字）；visited 只能是 0/1。
  */

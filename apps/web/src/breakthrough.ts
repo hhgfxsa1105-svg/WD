@@ -1,7 +1,7 @@
 import { breakthroughChance, nextRealm } from '@jhz/game-rules';
 import type { PlayerState } from '@jhz/contracts';
+import { formatGameDuration } from '@jhz/game-rules';
 import { REALM_LABEL } from './labels';
-import { formatCountdown } from './time';
 
 export interface BreakthroughView {
   /** 是否可以发起突破 */
@@ -13,16 +13,17 @@ export interface BreakthroughView {
 }
 
 /** 突破入口的显示状态；判定顺序与服务端一致：最高境界 → 进度 → 冷却（服务端始终是最终裁判） */
-export function breakthroughView(p: PlayerState, now: number): BreakthroughView {
+/** gameNow：当前游戏分钟；冷却也是游戏分钟 */
+export function breakthroughView(p: PlayerState, gameNow: number): BreakthroughView {
   const target = nextRealm(p.realm);
   if (!target) return { ok: false, text: '已臻陆地神仙，再无更高境界', route: null };
   const route = `${REALM_LABEL[p.realm]} → ${REALM_LABEL[target]}`;
-  const left = p.breakthroughAvailableAt === null ? 0 : p.breakthroughAvailableAt - now;
+  const left = p.breakthroughAvailableAt === null ? 0 : p.breakthroughAvailableAt - gameNow;
   const cooling = left > 0;
   if (p.realmProgress < 100) {
     const base = `进度 ${p.realmProgress}/100，修炼圆满后可突破`;
-    return { ok: false, text: cooling ? `${base} · 冷却剩余 ${formatCountdown(left)}` : base, route };
+    return { ok: false, text: cooling ? `${base} · 冷却剩余 ${formatGameDuration(left)}` : base, route };
   }
-  if (cooling) return { ok: false, text: `气息未平 · 剩余 ${formatCountdown(left)}`, route };
+  if (cooling) return { ok: false, text: `气息未平 · 还需 ${formatGameDuration(left)}`, route };
   return { ok: true, text: `可突破 · 成功率约 ${breakthroughChance(p)!.percent}%`, route };
 }

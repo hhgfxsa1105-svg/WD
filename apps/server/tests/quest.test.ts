@@ -331,7 +331,7 @@ describe('任务：接取、推进、完成、领取', () => {
     // 审计差异覆盖货币、关系与任务领取标记
     const audit = AuditActionResponseSchema.parse((await g.app.inject({ method: 'GET', url: `/api/v1/audit/actions/${first.actionId}` })).json());
     expect(audit.events[0]!.eventType).toBe('action.quest.claim');
-    expect(Object.keys(audit.events[0]!.after!).sort()).toEqual(['currency', 'quests', 'relations', 'version']);
+    expect(Object.keys(audit.events[0]!.after!).sort()).toEqual(['currency', 'gameMinutes', 'quests', 'relations', 'version']);
     expect(audit.events[0]!.after!.quests).toEqual({ [Q1]: { status: 'completed', stepIndex: 3, claimed: true } });
   });
 

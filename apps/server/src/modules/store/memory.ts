@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { LocationStateSchema, LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type LocationState, type NpcMemory, type NpcState, type PlayerState, type Relationship } from '@jhz/contracts';
-import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
+import { INITIAL_GAME_MINUTES, INITIAL_INVENTORY, MAX_ADVANCE_MINUTES, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import { initialLocations, normalizeLocationStatus, relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
@@ -15,6 +15,7 @@ interface State {
   memories: Map<string, NpcMemory>;
   quests: Map<string, QuestRecord>;
   locations: Map<string, LocationState>;
+  gameMinutes: number;
   events: (AuditEvent & { log: LogRecord | null })[];
   seq: number;
 }
@@ -29,6 +30,7 @@ const cloneState = (s: State): State => ({
   memories: new Map([...s.memories].map(([k, v]) => [k, { ...v }])),
   quests: new Map([...s.quests].map(([k, v]) => [k, { ...v }])),
   locations: new Map([...s.locations].map(([k, v]) => [k, { ...v }])),
+  gameMinutes: s.gameMinutes,
   events: structuredClone(s.events),
   seq: s.seq,
 });
@@ -65,6 +67,12 @@ function makeTx(s: State): GameTx {
         if (other) throw new AppError('CONFLICT', '已有进行中的修炼');
       }
       s.jobs.set(job.id, { ...job });
+    },
+    gameMinutes: () => s.gameMinutes,
+    advanceGameClock(minutes) {
+      if (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_ADVANCE_MINUTES) throw new AppError('VALIDATION_FAILED', `游戏时间只能向前推进 0 到 ${MAX_ADVANCE_MINUTES} 分钟`);
+      s.gameMinutes += minutes;
+      return s.gameMinutes;
     },
     locations: () => [...s.locations.values()].map((l) => ({ ...l })),
     setLocationStatus(id, status, reason) {
@@ -164,7 +172,7 @@ function makeTx(s: State): GameTx {
     },
     appendEvent(input) {
       const seq = ++s.seq;
-      const log = input.log ? LogRecordSchema.parse({ ...input.log, id: seq, at: input.at }) : null;
+      const log = input.log ? LogRecordSchema.parse({ ...input.log, id: seq, at: input.at, gameMinutes: s.gameMinutes }) : null;
       s.events.push({
         seq,
         id: input.id ?? randomUUID(),
@@ -205,6 +213,7 @@ export function createMemoryGameStore(initial: PlayerState = createInitialPlayer
     memories: new Map(),
     quests: new Map(initialQuestRecords().map((q) => [q.id, q])),
     locations: new Map(initialLocations().map((l) => [l.id, l])),
+    gameMinutes: INITIAL_GAME_MINUTES,
     relations: new Map(initialRelationships().map((r) => [relationKey(r.npcId, r.targetType, r.targetId), r])),
     events: [],
     seq: 0,

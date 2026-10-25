@@ -9,7 +9,7 @@ import {
   PlayerStateSchema,
   type PlayerState,
 } from '@jhz/contracts';
-import { BREAKTHROUGH_RULES, createInitialPlayer, fixedRng } from '@jhz/game-rules';
+import { ACTION_MINUTES, BREAKTHROUGH_RULES, createInitialPlayer, fixedRng } from '@jhz/game-rules';
 import { buildApp } from '../src/app.js';
 import { openDatabase } from '../src/db/connection.js';
 import { runMigrations } from '../src/db/migrate.js';
@@ -54,30 +54,36 @@ describe('POST /actions 突破', () => {
   });
 
   it('失败：进度回落、气血受损、进入 24 小时冷却，且丹药照样消耗', async () => {
-    const { bt, state, pills, time } = await setup({ rng: 0.9999 });
+    const { bt, state, pills, store } = await setup({ rng: 0.9999 });
+    const t0 = store.read((tx) => tx.gameMinutes());
     const body = ActionResponseSchema.parse((await bt(1, PILL)).json());
     expect(body.breakthrough!.outcome).toBe('failure');
     expect(body.player.realm).toBe('body_tempering');
     expect(body.player.realmProgress).toBe(80);
     expect(body.player.hp).toBe(80);
-    expect(state().breakthroughAvailableAt).toBe(time.t + BREAKTHROUGH_RULES.cooldownMs);
+    // 冷却从尝试结束时起算：游戏时间已推进 180 分钟（突破耗时），再过 24 游戏小时可再试
+    expect(store.read((tx) => tx.gameMinutes())).toBe(t0 + ACTION_MINUTES.breakthrough);
+    expect(state().breakthroughAvailableAt).toBe(t0 + ACTION_MINUTES.breakthrough + BREAKTHROUGH_RULES.cooldownMinutes);
     expect(pills()).toBe(0);
   });
 
   it('冷却中被拒绝且不消耗丹药；24 小时后恢复可用', async () => {
-    const { bt, post, store, state, pills, time } = await setup({ rng: 0.9999 });
+    const { bt, post, store, state, pills } = await setup({ rng: 0.9999 });
     await bt(1); // 失败，进入冷却（不带丹药）
     store.transact((tx) => tx.savePlayer({ ...tx.player(), realmProgress: 100 })); // 假设已重新修炼满
     const before = state();
 
-    time.t += BREAKTHROUGH_RULES.cooldownMs - 1;
+    const left = () => state().breakthroughAvailableAt! - store.read((tx) => tx.gameMinutes());
+    expect(left()).toBe(BREAKTHROUGH_RULES.cooldownMinutes); // 刚失败：还要整整 24 游戏小时
+    store.transact((tx) => tx.advanceGameClock(BREAKTHROUGH_RULES.cooldownMinutes - 1));
     const early = await bt(2, PILL);
     expect(early.statusCode).toBe(422);
     expect(ErrorResponseSchema.parse(early.json()).message).toContain('隔一日');
     expect(pills()).toBe(1); // 丹药未被扣
     expect(state()).toEqual(before);
+    expect(store.read((tx) => tx.gameMinutes())).toBe(before.breakthroughAvailableAt! - 1); // 被拒绝的尝试不推进时间
 
-    time.t += 1;
+    store.transact((tx) => tx.advanceGameClock(1));
     expect((await bt(3, PILL)).statusCode).toBe(200);
     expect(pills()).toBe(0);
     void post;

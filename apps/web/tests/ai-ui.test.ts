@@ -17,6 +17,7 @@ const status = (patch: Partial<AiStatusResponse> = {}): AiStatusResponse => ({
 const rec = (patch: Partial<LogRecord> = {}): LogRecord => ({
   id: 7,
   at: 0,
+  gameMinutes: null,
   type: 'breakthrough',
   narrative: '模板叙事',
   changes: [],

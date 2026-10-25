@@ -26,7 +26,7 @@ export interface StoredAction {
 }
 
 /** 玩家可见日志的内容（序号与时间由存档层在写入时赋予） */
-export type LogPayload = Omit<LogRecord, 'id' | 'at'>;
+export type LogPayload = Omit<LogRecord, 'id' | 'at' | 'gameMinutes'>;
 
 /** 一次改变了某条关系的审计事件（前后值来自事件的差异；before 为 null 表示此前没有这条关系） */
 export interface RelationChangeRecord {
@@ -64,6 +64,11 @@ export interface GameTx {
   runningJob(): CultivationJobRecord | null;
   /** 新建或更新（按 id） */
   saveJob(job: CultivationJobRecord): void;
+
+  /** 当前游戏时间（游戏分钟）。审计事件与玩家日志自动记录写入时刻的游戏时间 */
+  gameMinutes(): number;
+  /** 推进游戏时钟 minutes 个游戏分钟（整数，0..MAX_ADVANCE_MINUTES）；返回新时间。时间只增不减，非法参数 VALIDATION_FAILED */
+  advanceGameClock(minutes: number): number;
 
   /** 全部 NPC 的可变状态（显示文字来自静态定义） */
   npcs(): NpcState[];

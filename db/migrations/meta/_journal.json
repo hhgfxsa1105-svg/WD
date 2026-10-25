@@ -71,6 +71,13 @@
       "when": 1792898966979,
       "tag": "0009_locations",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1792904512289,
+      "tag": "0010_game_clock",
+      "breakpoints": true
     }
   ]
 }

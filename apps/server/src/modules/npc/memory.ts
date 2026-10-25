@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { LogRecord, Realm } from '@jhz/contracts';
-import { MEMORY_EVENTS, NPC_DEFS, applyRelationDelta, isNpcId, memorySummary, type MemoryEventKind } from '@jhz/game-rules';
+import { ACTION_MINUTES, MEMORY_EVENTS, NPC_DEFS, applyRelationDelta, isNpcId, memorySummary, type MemoryEventKind } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
 import { advanceQuests } from '../quest/service.js';
@@ -63,14 +63,16 @@ export function meetNpc(store: GameStore, npcId: string, at: number): MeetResult
     if (tx.memories(npcId).some((m) => m.type === 'met')) return { firstMeeting: false };
 
     const d = NPC_DEFS[npcId];
+    const clockFrom = tx.gameMinutes();
+    const clockTo = tx.advanceGameClock(ACTION_MINUTES.greet);
     const narrative = `你走到${d.name}（${d.role}）面前，拱手见礼，两人就此相识。`;
     const eventId = randomUUID();
     const log = tx.appendEvent({
       id: eventId,
       actionId: null,
       eventType: 'npc.met',
-      before: null,
-      after: null,
+      before: { gameMinutes: clockFrom },
+      after: { gameMinutes: clockTo },
       at,
       log: { type: 'system', narrative, changes: [], breakthrough: null, idle: null, note: null },
     });

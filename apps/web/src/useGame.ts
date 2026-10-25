@@ -87,7 +87,7 @@ export function useGame() {
       setJob(r.job);
       setServerOffset(r.serverNow - Date.now());
       appendRecord(r.log);
-      if (r.log) void refreshRef.current(); // 有收益时修炼进度变了，任务提示可能随之出现
+      if (r.log || r.ticks > 0) void refreshRef.current(); // 有收益时修炼进度、游戏时间变了，任务提示可能随之出现
       if (!r.log && !quiet) setNotice('暂无可领取的收益');
     },
     [appendRecord],
@@ -240,11 +240,12 @@ export function useGame() {
 
   /** 行动之后重新读取日志、任务与人物：服务端写入的任务进度提示、人物变化才会马上显示 */
   const refreshWorld = useCallback(async () => {
-    const [history, qs, ns, mp] = await Promise.all([fetchLog().catch(() => null), fetchQuests().catch(() => null), fetchNpcs().catch(() => null), fetchMap().catch(() => null)]);
+    const [history, qs, ns, mp, w] = await Promise.all([fetchLog().catch(() => null), fetchQuests().catch(() => null), fetchNpcs().catch(() => null), fetchMap().catch(() => null), fetchWorldTime().catch(() => null)]);
     if (history) setLog((l) => mergeEntries(l, history.flatMap(toLogEntries)));
     if (qs) setQuests(qs);
     if (ns) setNpcs(ns);
     if (mp) setMap(mp);
+    if (w) setWorld(w);
   }, []);
 
   refreshRef.current = refreshWorld;

@@ -32,7 +32,7 @@ interface Props {
 
 export function ActionPanel(p: Props) {
   const now = useNow(p.serverOffset);
-  const bt = breakthroughView(p.player, now);
+  const bt = breakthroughView(p.player, p.world?.game.minutes ?? 0);
   const canCultivate = p.player.stamina >= RULES.cultivate.staminaCost;
   const preview = p.job ? idlePreview(p.player, p.job, now) : null;
   const full = p.player.realmProgress >= 100;

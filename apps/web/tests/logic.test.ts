@@ -6,8 +6,25 @@ import { createKeyStore } from '../src/api/idempotency';
 import { idlePreview } from '../src/idle';
 import { formatCountdown } from '../src/time';
 
-const NOW = 1_800_000_000_000;
+const NOW = 10_000; // 游戏分钟
 const p = (patch: Partial<PlayerState> = {}): PlayerState => ({ ...createInitialPlayer(), ...patch });
+
+describe('日志时间标记（游戏时间）', () => {
+  it('取自事件发生时的游戏时间：时辰 + 完整日期作提示；与日志序号无关', () => {
+    const a = toLogEntries(rec({ id: 1, gameMinutes: 7 * 60 }))[0]!;
+    const b = toLogEntries(rec({ id: 99, gameMinutes: 7 * 60 }))[0]!;
+    expect(a).toMatchObject({ time: '辰时', timeTitle: '第 1 天 · 辰时' });
+    expect(b.time).toBe(a.time);
+    expect(toLogEntries(rec({ gameMinutes: 1440 + 13 * 60 }))[0]).toMatchObject({ time: '未时', timeTitle: '第 2 天 · 未时' });
+  });
+  it('旧记录没有游戏时间：不显示时辰，也不编造', () => {
+    expect(toLogEntries(rec({ gameMinutes: null }))[0]).toMatchObject({ time: '' });
+    expect(toLogEntries(rec({ gameMinutes: null }))[0]!.timeTitle).toBeUndefined();
+  });
+  it('欢迎语停在游戏起点', () => {
+    expect(WELCOME.time).toBe('辰时');
+  });
+});
 
 describe('formatCountdown', () => {
   it.each([
@@ -35,16 +52,16 @@ describe('breakthroughView', () => {
     expect(v.text).toBe('可突破 · 成功率约 70%');
   });
 
-  it('冷却中：显示倒计时；恰好到点后可用', () => {
-    const cool = p({ realmProgress: 100, breakthroughAvailableAt: NOW + 3_661_000 });
-    expect(breakthroughView(cool, NOW)).toMatchObject({ ok: false, text: '气息未平 · 剩余 01:01:01' });
-    expect(breakthroughView(cool, NOW + 3_661_000).ok).toBe(true);
+  it('冷却中：按游戏时间显示剩余；恰好到点后可用', () => {
+    const cool = p({ realmProgress: 100, breakthroughAvailableAt: NOW + 61 });
+    expect(breakthroughView(cool, NOW)).toMatchObject({ ok: false, text: '气息未平 · 还需 1 小时 1 分钟' });
+    expect(breakthroughView(cool, NOW + 61).ok).toBe(true);
   });
 
   it('失败后进度回落且仍在冷却：两条信息都显示', () => {
-    const v = breakthroughView(p({ realmProgress: 80, breakthroughAvailableAt: NOW + 60_000 }), NOW);
+    const v = breakthroughView(p({ realmProgress: 80, breakthroughAvailableAt: NOW + 90 }), NOW);
     expect(v.ok).toBe(false);
-    expect(v.text).toBe('进度 80/100，修炼圆满后可突破 · 冷却剩余 00:01:00');
+    expect(v.text).toBe('进度 80/100，修炼圆满后可突破 · 冷却剩余 1 小时 30 分钟');
   });
 
   it('最高境界：没有下一境界', () => {
@@ -105,7 +122,7 @@ describe('离线说明', () => {
     );
   });
   it('规则一句话', () => {
-    expect(offlineRuleText(12 * 3_600_000, 50)).toBe('离线最多计入 12 小时，按 50% 效率');
+    expect(offlineRuleText(12 * 3_600_000, 50)).toBe('离线最多计入 12 小时，按 50% 效率；修炼时现实 1 小时 = 游戏 1 时辰');
   });
 });
 
@@ -116,6 +133,7 @@ import { WELCOME, mergeEntries, toLogEntries } from '../src/log';
 const rec = (over: Partial<LogRecord>): LogRecord => ({
   id: 3,
   at: 1,
+  gameMinutes: null,
   type: 'fixed',
   narrative: '叙事',
   changes: [],
@@ -158,7 +176,7 @@ describe('toLogEntries：把服务端记录渲染为界面条目', () => {
       }),
     );
     expect(e!.chips.map((c) => c.text)).toEqual(['经验 −20%', '气血 −20']);
-    expect(e!.sub).toBe('成功率 70% · 掷点 90.00 · 冷却 24 小时');
+    expect(e!.sub).toBe('成功率 70% · 掷点 90.00 · 冷却 24 游戏小时');
   });
 
   it('放置修炼：有收益显示结算分钟与离线说明；无收益的离线单独说明', () => {

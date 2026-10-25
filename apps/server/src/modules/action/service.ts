@@ -6,7 +6,7 @@ import {
   type StateChange,
   type SubmitActionRequest,
 } from '@jhz/contracts';
-import { pillGradeOf, resolveBreakthrough, resolveFixedAction, resolveMove, type Rng } from '@jhz/game-rules';
+import { ACTION_MINUTES, pillGradeOf, resolveBreakthrough, resolveFixedAction, resolveMove, type Rng } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import type { Clock } from '../../shared/runtime.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
@@ -68,6 +68,7 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       const r = resolveFixedAction(player, req.actionId);
       if (!r.ok) throw new AppError('PRECONDITION_FAILED', r.message);
       tx.savePlayer(r.player);
+      tx.advanceGameClock(ACTION_MINUTES[req.actionId]);
       return {
         changes: r.changes,
         narrative: r.narrative,
@@ -82,11 +83,13 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       if (!r.ok) throw new AppError(r.code === 'UNKNOWN_LOCATION' ? 'NOT_FOUND' : 'PRECONDITION_FAILED', r.message);
       tx.savePlayer(r.player);
       tx.visitLocation(req.locationId); // 到过的地点才能看到详情
+      tx.advanceGameClock(r.minutes);
       return { changes: r.changes, narrative: r.narrative, breakthrough: null, log: { type: 'fixed', narrative: r.narrative, changes: r.changes, breakthrough: null, idle: null, note: null } };
     }
 
     if (req.kind === 'quest') {
       const r = resolveQuestOp(tx, req, now);
+      tx.advanceGameClock(ACTION_MINUTES.quest);
       return { changes: r.changes, narrative: r.narrative, breakthrough: null, log: r.log };
     }
 
@@ -98,10 +101,11 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       if (!pillGrade) throw new AppError('PRECONDITION_FAILED', '该物品不能用于突破');
       pillName = tx.inventory().find((i) => i.itemId === req.pillItemId)?.name ?? null;
     }
-    const r = resolveBreakthrough(player, { now, rng, pillGrade });
+    const r = resolveBreakthrough(player, { now: tx.gameMinutes(), rng, pillGrade, elapsed: ACTION_MINUTES.breakthrough });
     if (!r.ok) throw new AppError('PRECONDITION_FAILED', r.message);
     if (req.pillItemId) tx.takeItem(req.pillItemId, 1);
     tx.savePlayer(r.player);
+    tx.advanceGameClock(ACTION_MINUTES.breakthrough);
     const breakthrough = { outcome: r.outcome, chancePercent: r.chancePercent, roll: r.roll };
     return {
       changes: r.changes,

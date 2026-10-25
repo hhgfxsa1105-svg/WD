@@ -44,7 +44,7 @@ export function LogPanel({ entries, ai, onRetryNarration }: Props) {
       <ol className="log" ref={list} aria-live="polite">
         {entries.map((e) => (
           <li className={e.system ? 'entry system' : 'entry'} key={e.key}>
-            <time>{e.time}</time>
+            <time title={e.timeTitle}>{e.time}</time>
             <div>
               <p>{e.text}</p>
               {e.chips.length > 0 && (
