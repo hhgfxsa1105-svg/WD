@@ -316,6 +316,61 @@ export const quests = sqliteTable(
 export const DB_LOCATION_STATUSES = ['open', 'blocked'] as const;
 const locationStatusList = sql.raw(DB_LOCATION_STATUSES.map((r) => `'${r}'`).join(', '));
 
+/** 与 @jhz/contracts 的 WORLD_EVENT_STATES 保持一致（测试校验） */
+export const DB_WORLD_EVENT_STATES = ['scheduled', 'open', 'resolved', 'missed'] as const;
+const eventStateList = sql.raw(DB_WORLD_EVENT_STATES.map((r) => `'${r}'`).join(', '));
+
+/**
+ * 世界事件的可变状态：每个静态事件一行（id 即事件定义 ID）。
+ * 约束：了结（resolved / missed）当且仅当有了结时间；参加过的事件必定是 resolved；布尔只能 0/1。
+ */
+export const worldEvents = sqliteTable(
+  'world_events',
+  {
+    id: text('id').primaryKey(),
+    state: text('state').notNull(),
+    rumored: integer('rumored').notNull().default(0),
+    participated: integer('participated').notNull().default(0),
+    resolvedAt: integer('resolved_at'),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    check('world_events_id_format', sql`${t.id} glob 'evt_*' and length(${t.id}) <= 48`),
+    check('world_events_state_valid', sql`${t.state} in (${eventStateList})`),
+    check('world_events_flags', sql`${t.rumored} in (0, 1) and ${t.participated} in (0, 1)`),
+    check('world_events_resolved_time', sql`(${t.state} in ('resolved', 'missed')) = (${t.resolvedAt} is not null)`),
+    check('world_events_resolved_time_nonneg', sql`${t.resolvedAt} is null or ${t.resolvedAt} >= 0`),
+    check('world_events_participated_resolved', sql`${t.participated} = 0 or ${t.state} = 'resolved'`),
+  ],
+);
+
+/**
+ * 传闻与新闻：每个事件的每种消息最多一条（唯一索引去重，重复调度写不进第二条）。
+ * seq 递增，保证展示顺序稳定。
+ */
+export const news = sqliteTable(
+  'news',
+  {
+    seq: integer('seq').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull(),
+    eventId: text('event_id').notNull(),
+    kind: text('kind').notNull(),
+    text: text('text').notNull(),
+    gameMinutes: integer('game_minutes').notNull(),
+    participated: integer('participated').notNull().default(0),
+    createdAt: integer('created_at').notNull().default(nowMs),
+  },
+  (t) => [
+    foreignKey({ columns: [t.eventId], foreignColumns: [worldEvents.id] }).onDelete('cascade'),
+    uniqueIndex('news_id_unique').on(t.id),
+    uniqueIndex('news_event_kind_unique').on(t.eventId, t.kind),
+    check('news_kind_valid', sql`${t.kind} in ('rumor', 'news')`),
+    check('news_text_len', sql`length(${t.text}) between 1 and 400`),
+    check('news_time_nonneg', sql`${t.gameMinutes} >= 0`),
+    check('news_participated_flag', sql`${t.participated} in (0, 1)`),
+  ],
+);
+
 /**
  * 游戏时钟：单行（id = 'main'），整数游戏分钟，只增不减（单调性由存档层的 advance 保证，
  * 这里的约束只兜底非负）。与 world_clock（现实时间高水位）无关。

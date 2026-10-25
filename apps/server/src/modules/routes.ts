@@ -5,6 +5,8 @@ import {
   InventoryResponseSchema,
   GreetResponseSchema,
   WorldMapResponseSchema,
+  NewsResponseSchema,
+  WorldEventsResponseSchema,
   NpcListResponseSchema,
   NpcMemoryListResponseSchema,
   RelationExplainResponseSchema,
@@ -14,6 +16,7 @@ import {
   SubmitActionRequestSchema,
   WorldTimeResponseSchema,
 } from '@jhz/contracts';
+import { eventViews, joinEvent, newsList } from './world-events/service.js';
 import { LOCATION_DEFS, gameDate, NPC_DEFS, REGION_DEFS, isLocationId, isNpcId, locationName, moveCost, neighborsOf, selectMemories } from '@jhz/game-rules';
 import { z } from 'zod';
 import { AppError, parseWith } from '../shared/errors.js';
@@ -112,6 +115,21 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
       }),
     }),
   );
+
+  // 世界事件（只读）：已放出传闻的、进行中的和已过去的；还没有风声的事件不可见
+  app.get('/api/v1/world/events', async () => WorldEventsResponseSchema.parse({ events: store.read((tx) => eventViews(tx)) }));
+
+  // 传闻与新闻（只读），最新的在前
+  app.get('/api/v1/world/news', async (req) => {
+    const { limit } = parseWith(z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) }).strict(), req.query);
+    return NewsResponseSchema.parse({ news: store.read((tx) => newsList(tx, limit)) });
+  });
+
+  // 到场参加一个正在进行的事件（不依赖 AI）：必须 open 且人在现场；事件由此了结，重复参加 422
+  app.post<{ Params: { id: string } }>('/api/v1/world/events/:id/join', async (req) => {
+    if (!/^evt_[a-z0-9_]{1,44}$/.test(req.params.id)) throw new AppError('NOT_FOUND', '没有这个事件');
+    return joinEvent(store, req.params.id, clock.now());
+  });
 
   // 打招呼：不依赖 AI。第一次见面留下记忆并微调关系；已相识则不改任何状态（天然幂等）。NPC 必须在玩家所在地点
   app.post<{ Params: { id: string } }>('/api/v1/world/npcs/:id/greet', async (req) => {

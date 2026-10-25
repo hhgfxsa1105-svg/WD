@@ -4,6 +4,8 @@ import {
   GreetResponseSchema,
   NpcListResponseSchema,
   WorldMapResponseSchema,
+  WorldEventsResponseSchema,
+  JoinEventResponseSchema,
   NpcMemoryListResponseSchema,
   QuestListResponseSchema,
   RelationExplainResponseSchema,
@@ -19,6 +21,8 @@ import {
   type NpcMemory,
   type NpcView,
   type WorldMapResponse,
+  type WorldEventView,
+  type JoinEventResponse,
   type QuestOp,
   type QuestView,
   type RelationExplainResponse,
@@ -112,6 +116,10 @@ export const submitQuestOp = (questId: string, op: QuestOp, idempotencyKey = new
   submit({ kind: 'quest', idempotencyKey, questId, op });
 
 export const fetchQuests = async (): Promise<QuestView[]> => (await request('/api/v1/quests', QuestListResponseSchema)).quests;
+export const fetchEvents = async (): Promise<WorldEventView[]> => (await request('/api/v1/world/events', WorldEventsResponseSchema)).events;
+
+export const joinWorldEvent = (eventId: string): Promise<JoinEventResponse> => postJson(`/api/v1/world/events/${encodeURIComponent(eventId)}/join`, JoinEventResponseSchema);
+
 export const fetchMap = (): Promise<WorldMapResponse> => request('/api/v1/world/map', WorldMapResponseSchema);
 
 export const fetchNpcs = async (): Promise<NpcView[]> => (await request('/api/v1/world/npcs', NpcListResponseSchema)).npcs;

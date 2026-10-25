@@ -1,5 +1,5 @@
-import { LocationStateSchema, NpcMemorySchema, NpcStateSchema, QuestStateSchema, RelationshipSchema, type LocationState, type NpcMemory, type NpcState, type QuestState, type QuestStatus, type Relationship } from '@jhz/contracts';
-import { INITIAL_VISITED, LOCATION_DEFS, LOCATION_REASON_MAX, isKnownItem, QUEST_DEFS, canTransition, initialQuestStatus, isQuestId, type QuestId, MEMORY_EVENTS, planCompaction, INITIAL_RELATIONS, NPC_DEFS, NPC_STATUSES, applyRelationDelta, isLocationId, isNpcId, type RelationDelta, type RelationTargetType } from '@jhz/game-rules';
+import { LocationStateSchema, NpcMemorySchema, WorldEventRecordSchema, type NewsItem, type WorldEventRecord, NpcStateSchema, QuestStateSchema, RelationshipSchema, type LocationState, type NpcMemory, type NpcState, type QuestState, type QuestStatus, type Relationship } from '@jhz/contracts';
+import { SYSTEM_EVENT_DEFS, INITIAL_VISITED, LOCATION_DEFS, LOCATION_REASON_MAX, isKnownItem, QUEST_DEFS, canTransition, initialQuestStatus, isQuestId, type QuestId, MEMORY_EVENTS, planCompaction, INITIAL_RELATIONS, NPC_DEFS, NPC_STATUSES, applyRelationDelta, isLocationId, isNpcId, type RelationDelta, type RelationTargetType } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 
 /** 单机固定的玩家 ID（关系对象为玩家时使用） */
@@ -45,11 +45,11 @@ export function nextRelationship(current: Relationship | undefined, npcId: strin
  * 文件里缺少的 NPC / 关系用初始值补齐。不合格时抛出带中文原因的 Error。
  */
 export function mergeImportedWorld(
-  world: { npcs: NpcState[]; relationships: Relationship[]; memories?: NpcMemory[]; quests?: QuestState[]; locations?: LocationState[]; gameMinutes?: number; inventory?: { itemId: string; quantity: number }[] },
+  world: { npcs: NpcState[]; relationships: Relationship[]; memories?: NpcMemory[]; quests?: QuestState[]; locations?: LocationState[]; gameMinutes?: number; events?: WorldEventRecord[]; news?: NewsItem[]; inventory?: { itemId: string; quantity: number }[] },
   now: number = Date.now(),
   /** 玩家当前所在地点：导入后它一定是「去过」的 */
   currentLocationId: string = 'loc_qingyun_gate',
-): { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; locations: LocationState[]; gameMinutes: number | undefined; inventory: { itemId: string; quantity: number }[] | null } {
+): { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; locations: LocationState[]; gameMinutes: number | undefined; events: WorldEventRecord[]; news: NewsItem[]; inventory: { itemId: string; quantity: number }[] | null } {
   const npcs = new Map(initialNpcs().map((n) => [n.id, n]));
   const seenNpc = new Set<string>();
   for (const n of world.npcs) {
@@ -93,7 +93,8 @@ export function mergeImportedWorld(
     }
     inventory = world.inventory.filter((i) => i.quantity > 0).map((i) => ({ ...i }));
   }
-  return { npcs: [...npcs.values()], relationships: [...rels.values()], memories, quests: mergeImportedQuests(world.quests ?? [], now), locations: mergeImportedLocations(world.locations ?? [], currentLocationId), gameMinutes: world.gameMinutes, inventory };
+  const events = mergeImportedEvents(world.events ?? []);
+  return { npcs: [...npcs.values()], relationships: [...rels.values()], memories, quests: mergeImportedQuests(world.quests ?? [], now), locations: mergeImportedLocations(world.locations ?? [], currentLocationId), gameMinutes: world.gameMinutes, events, news: validateImportedNews(world.news ?? [], events), inventory };
 }
 
 /** 校验并规范化导入的任务状态：任务必须存在、不重复；步数、状态与领取标记必须自洽；进行中或已完成的任务其前置任务必须已完成 */
@@ -149,8 +150,8 @@ export function compactMemories(
 }
 
 /** 导出存档用的世界快照：NPC 状态、关系与全部记忆 */
-export function snapshotWorld(tx: { npcs(): NpcState[]; relationships(): Relationship[]; memories(npcId: string): NpcMemory[]; quests(): QuestState[]; locations(): LocationState[]; gameMinutes(): number; inventory(): { itemId: string; quantity: number }[] }) {
-  return { npcs: tx.npcs(), relationships: tx.relationships(), memories: tx.npcs().flatMap((n) => tx.memories(n.id)), quests: tx.quests(), locations: tx.locations(), gameMinutes: tx.gameMinutes(), inventory: tx.inventory().map((i) => ({ itemId: i.itemId, quantity: i.quantity })) };
+export function snapshotWorld(tx: { npcs(): NpcState[]; relationships(): Relationship[]; memories(npcId: string): NpcMemory[]; quests(): QuestState[]; locations(): LocationState[]; gameMinutes(): number; worldEvents(): WorldEventRecord[]; news(): NewsItem[]; inventory(): { itemId: string; quantity: number }[] }) {
+  return { npcs: tx.npcs(), relationships: tx.relationships(), memories: tx.npcs().flatMap((n) => tx.memories(n.id)), quests: tx.quests(), locations: tx.locations(), gameMinutes: tx.gameMinutes(), events: tx.worldEvents(), news: tx.news(), inventory: tx.inventory().map((i) => ({ itemId: i.itemId, quantity: i.quantity })) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -251,4 +252,63 @@ export function mergeImportedLocations(imported: LocationState[], currentLocatio
   const here = byId.get(currentLocationId);
   if (here && !here.visited) byId.set(currentLocationId, { ...here, visited: true }); // 站在这里，当然去过
   return [...byId.values()];
+}
+
+/* ------------------------------------------------------------------ */
+/* 世界事件与新闻                                                      */
+/* ------------------------------------------------------------------ */
+
+export const initialWorldEvent = (id: string): WorldEventRecord => ({ id, state: 'scheduled', rumored: false, participated: false, resolvedAt: null });
+export const initialWorldEvents = (): WorldEventRecord[] => SYSTEM_EVENT_DEFS.map((d) => initialWorldEvent(d.id));
+
+const EVENT_NEXT: Record<WorldEventRecord['state'], readonly WorldEventRecord['state'][]> = {
+  scheduled: ['open', 'resolved', 'missed'],
+  open: ['resolved', 'missed'],
+  resolved: [],
+  missed: [],
+};
+
+/** 事件状态只能向前流转：scheduled → open → resolved | missed（也可直接了结）；了结后不可再变 */
+export function applyEventPatch(cur: WorldEventRecord, patch: Partial<Omit<WorldEventRecord, 'id'>>): WorldEventRecord {
+  if (patch.state && patch.state !== cur.state && !EVENT_NEXT[cur.state].includes(patch.state)) {
+    throw new AppError('PRECONDITION_FAILED', `事件状态不能从 ${cur.state} 变为 ${patch.state}`);
+  }
+  if (patch.rumored === false && cur.rumored) throw new AppError('PRECONDITION_FAILED', '传闻放出后不能收回');
+  if (cur.state === 'resolved' || cur.state === 'missed') {
+    if (patch.state && patch.state !== cur.state) throw new AppError('PRECONDITION_FAILED', '事件已经了结');
+  }
+  const parsed = WorldEventRecordSchema.safeParse({ ...cur, ...patch });
+  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '事件状态不合法');
+  return parsed.data;
+}
+
+/** 校验并规范化导入的事件状态：事件必须存在、不重复；缺少的用初始值补齐 */
+export function mergeImportedEvents(imported: WorldEventRecord[]): WorldEventRecord[] {
+  const byId = new Map(initialWorldEvents().map((e) => [e.id, e]));
+  const seen = new Set<string>();
+  for (const e of imported) {
+    if (!byId.has(e.id)) throw new Error(`存档里有未知事件：${e.id}`);
+    if (seen.has(e.id)) throw new Error(`存档里事件重复：${e.id}`);
+    seen.add(e.id);
+    byId.set(e.id, e);
+  }
+  return [...byId.values()];
+}
+
+/** 校验导入的传闻/新闻：事件必须存在，(事件, 种类) 不重复，ID 不重复，且新闻对应的事件已了结 */
+export function validateImportedNews(news: NewsItem[], events: WorldEventRecord[]): NewsItem[] {
+  const state = new Map(events.map((e) => [e.id, e]));
+  const ids = new Set<string>();
+  const kinds = new Set<string>();
+  for (const n of news) {
+    const ev = state.get(n.eventId);
+    if (!ev) throw new Error(`存档里的新闻指向未知事件：${n.eventId}`);
+    if (ids.has(n.id)) throw new Error(`存档里新闻 ID 重复：${n.id}`);
+    ids.add(n.id);
+    const k = `${n.eventId}|${n.kind}`;
+    if (kinds.has(k)) throw new Error(`存档里同一事件的${n.kind === 'rumor' ? '传闻' : '新闻'}重复：${n.eventId}`);
+    kinds.add(k);
+    if (n.kind === 'news' && ev.state !== 'resolved' && ev.state !== 'missed') throw new Error(`存档里事件 ${n.eventId} 还没了结却有结果新闻`);
+  }
+  return news;
 }

@@ -10,6 +10,7 @@ import type {
   InventoryItem,
   LogRecord,
   NpcView,
+  WorldEventView,
   WorldMapResponse,
   QuestOp,
   QuestView,
@@ -22,7 +23,9 @@ import {
   fetchCultivation,
   fetchInventory,
   fetchLog,
+  fetchEvents,
   fetchMap,
+  joinWorldEvent,
   fetchNpcs,
   fetchQuests,
   greetNpc,
@@ -71,6 +74,7 @@ export function useGame() {
   const [quests, setQuests] = useState<QuestView[]>([]);
   const [npcs, setNpcs] = useState<NpcView[]>([]);
   const [map, setMap] = useState<WorldMapResponse | null>(null);
+  const [events, setEvents] = useState<WorldEventView[]>([]);
 
   const busyRef = useRef(false);
   const refreshRef = useRef<() => Promise<void>>(async () => undefined);
@@ -113,12 +117,13 @@ export function useGame() {
 
   const load = useCallback(() => {
     setLoadError(null);
-    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation(), fetchWorldTime().catch(() => null), fetchLog().catch(() => [] as LogRecord[]), fetchAiStatus().catch(() => null), fetchQuests().catch(() => [] as QuestView[]), fetchNpcs().catch(() => [] as NpcView[]), fetchMap().catch(() => null)]).then(
-      async ([p, inv, c, w, history, ai, qs, ns, mp]) => {
+    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation(), fetchWorldTime().catch(() => null), fetchLog().catch(() => [] as LogRecord[]), fetchAiStatus().catch(() => null), fetchQuests().catch(() => [] as QuestView[]), fetchNpcs().catch(() => [] as NpcView[]), fetchMap().catch(() => null), fetchEvents().catch(() => [] as WorldEventView[])]).then(
+      async ([p, inv, c, w, history, ai, qs, ns, mp, evs]) => {
         setAiStatus(ai);
         setQuests(qs);
         setNpcs(ns);
         setMap(mp);
+        setEvents(evs);
         setWorld(w);
         setLog(mergeEntries([WELCOME], history.flatMap(toLogEntries)));
         setPlayer(p);
@@ -240,7 +245,8 @@ export function useGame() {
 
   /** 行动之后重新读取日志、任务与人物：服务端写入的任务进度提示、人物变化才会马上显示 */
   const refreshWorld = useCallback(async () => {
-    const [history, qs, ns, mp, w] = await Promise.all([fetchLog().catch(() => null), fetchQuests().catch(() => null), fetchNpcs().catch(() => null), fetchMap().catch(() => null), fetchWorldTime().catch(() => null)]);
+    const [history, qs, ns, mp, w, evs] = await Promise.all([fetchLog().catch(() => null), fetchQuests().catch(() => null), fetchNpcs().catch(() => null), fetchMap().catch(() => null), fetchWorldTime().catch(() => null), fetchEvents().catch(() => null)]);
+    if (evs) setEvents(evs);
     if (history) setLog((l) => mergeEntries(l, history.flatMap(toLogEntries)));
     if (qs) setQuests(qs);
     if (ns) setNpcs(ns);
@@ -249,6 +255,15 @@ export function useGame() {
   }, []);
 
   refreshRef.current = refreshWorld;
+
+  /** 到场参加一个进行中的事件（在场与时机由服务端判定） */
+  const runJoinEvent = (eventId: string) =>
+    guarded(async () => {
+      const r = await joinWorldEvent(eventId);
+      setPlayer(r.player);
+      appendRecord(r.log);
+      await refreshWorld();
+    }, resync);
 
   /** 前往相邻地点（相邻与体力由服务端判定） */
   const runMove = (locationId: string) =>
@@ -335,6 +350,8 @@ export function useGame() {
     quests,
     npcs,
     map,
+    events,
+    runJoinEvent,
     runMove,
     runQuestOp,
     greet,

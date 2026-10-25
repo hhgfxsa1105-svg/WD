@@ -1,19 +1,22 @@
-import type { NpcView, PlayerState, WorldMapResponse } from '@jhz/contracts';
+import type { NpcView, PlayerState, WorldEventView, WorldMapResponse } from '@jhz/contracts';
 import { attitudeText } from '../npc';
 
 interface Props {
   player: PlayerState;
   npcs: NpcView[];
   map: WorldMapResponse | null;
+  events: WorldEventView[];
+  onJoinEvent: (eventId: string) => void;
   busy: boolean;
   error: string | null;
   onMove: (locationId: string) => void;
   onOpenNpc: (npcId: string) => void;
 }
 
-export function MapPanel({ player, npcs, map, busy, error, onMove, onOpenNpc }: Props) {
+export function MapPanel({ player, npcs, map, events, onJoinEvent, busy, error, onMove, onOpenNpc }: Props) {
   const here = npcs.filter((n) => n.location.id === player.location.id);
   const exits = map?.exits ?? [];
+  const live = events.filter((e) => e.state === 'scheduled' || e.state === 'open');
 
   return (
     <>
@@ -43,6 +46,28 @@ export function MapPanel({ player, npcs, map, busy, error, onMove, onOpenNpc }: 
         })}
         {exits.length > 0 && exits.every((x) => x.status === 'open' && player.stamina < x.stamina) && <p className="w-why">体力不足，先休息一下再赶路。</p>}
       </section>
+
+      {live.length > 0 && (
+        <section className="w-sec" aria-label="眼下的事">
+          <h4>眼下的事</h4>
+          {live.map((ev) => (
+            <div className="w-row" key={ev.id}>
+              <div className="w-t">
+                <strong>{ev.title ?? '风声'}</strong>
+                <small>
+                  {ev.state === 'scheduled' ? `${ev.summary} · ${ev.startsAt.label}` : `${ev.summary} · ${ev.location?.name ?? ''} · 截止 ${ev.closesAt?.label ?? ''}`}
+                  {ev.state === 'open' && ev.joinBlockedReason ? ` · ${ev.joinBlockedReason}` : ''}
+                </small>
+              </div>
+              {ev.state === 'open' && (
+                <button className="w-btn primary" type="button" disabled={busy || !ev.canJoin} onClick={() => onJoinEvent(ev.id)} aria-label={`参加${ev.title}`}>
+                  参加
+                </button>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
 
       <section className="w-sec" aria-label="这里的人">
         <h4>这里的人</h4>

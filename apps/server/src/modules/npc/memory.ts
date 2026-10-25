@@ -4,6 +4,7 @@ import { ACTION_MINUTES, MEMORY_EVENTS, NPC_DEFS, applyRelationDelta, isNpcId, m
 import { AppError } from '../../shared/errors.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
 import { advanceQuests } from '../quest/service.js';
+import { tickWorld } from '../world-events/service.js';
 import type { GameStore, GameTx } from '../store/types.js';
 
 const PLAYER = { type: 'player' as const, id: 'player_1' };
@@ -77,6 +78,7 @@ export function meetNpc(store: GameStore, npcId: string, at: number): MeetResult
       log: { type: 'system', narrative, changes: [], breakthrough: null, idle: null, note: null },
     });
     recordNpcMemories(tx, { sourceEventId: eventId, actionId: null, at, entries: [{ npcId, kind: 'met' }] });
+    tickWorld(tx, { at, actionId: null }); // 耗时 10 分钟，到期的世界事件在这里发生
     advanceQuests(tx, at, null); // 相识可能让任务条件成立
     return { firstMeeting: true, log: log!, narrative };
   });

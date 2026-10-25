@@ -78,6 +78,13 @@
       "when": 1792904512289,
       "tag": "0010_game_clock",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1792907857728,
+      "tag": "0011_world_events",
+      "breakpoints": true
     }
   ]
 }

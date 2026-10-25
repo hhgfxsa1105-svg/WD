@@ -12,6 +12,7 @@ import type { Clock } from '../../shared/runtime.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
 import { breakthroughWitnesses, recordNpcMemories } from '../npc/memory.js';
 import { advanceQuests, resolveQuestOp } from '../quest/service.js';
+import { tickWorld } from '../world-events/service.js';
 import type { GameStore, GameTx, LogPayload } from '../store/types.js';
 
 /** 状态机允许的流转；已 COMMITTED 的行动不得再次结算 */
@@ -191,6 +192,8 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       // 在场的 NPC 会记住这次突破（记忆与关系变化记在单独的 npc.memory 事件里）
       const bt = resolved.log.breakthrough;
       if (bt) recordNpcMemories(tx, { sourceEventId: eventId, actionId, at: now, entries: breakthroughWitnesses(tx, bt.outcome, bt.realmTo) });
+      // 游戏时间推进了：到期的世界事件在这里发生（传闻、开始、了结，各自一个后果事件）
+      tickWorld(tx, { at: now, actionId });
       // 这次行动可能让任务条件成立（到达地点、修炼进度、突破……）
       advanceQuests(tx, now, actionId);
       const response = ActionResponseSchema.parse({ ...draft, log });

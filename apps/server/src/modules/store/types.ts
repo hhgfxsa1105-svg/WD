@@ -1,4 +1,4 @@
-import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LocationState, LogRecord, NpcMemory, NpcState, PlayerState, QuestState, QuestStatus, Relationship } from '@jhz/contracts';
+import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LocationState, LogRecord, NewsItem, WorldEventRecord, NpcMemory, NpcState, PlayerState, QuestState, QuestStatus, Relationship } from '@jhz/contracts';
 import type { LocationStatus, MemoryEventKind, NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
 
 export interface CultivationJobRecord {
@@ -86,6 +86,17 @@ export interface GameTx {
   setLocationStatus(id: string, status: LocationStatus, reason: string | null): LocationState;
   /** 标记玩家去过这个地点（幂等）；地点不存在 NOT_FOUND */
   visitLocation(id: string): LocationState;
+
+  /** 全部世界事件的可变状态（名字、时间表来自静态定义） */
+  worldEvents(): WorldEventRecord[];
+  /** 事件行不存在则按初始状态创建（正常情况下建库时已播种；注入自定义事件表的测试用） */
+  ensureWorldEvent(id: string): WorldEventRecord;
+  /** 更新事件：状态只能向前（scheduled → open → resolved | missed）；了结后不可再变；不合法 PRECONDITION_FAILED，事件不存在 NOT_FOUND */
+  updateWorldEvent(id: string, patch: Partial<Omit<WorldEventRecord, 'id'>>): WorldEventRecord;
+  /** 传闻/新闻，按产生顺序；limit 只取最近的若干条 */
+  news(limit?: number): NewsItem[];
+  /** 追加一条传闻或新闻：同一事件同一种类只能有一条（重复 CONFLICT）；事件不存在 NOT_FOUND */
+  addNews(input: { eventId: string; kind: NewsItem['kind']; text: string; gameMinutes: number; participated: boolean }): NewsItem;
 
   /** 全部任务的可变状态（名字、步骤、奖励来自静态定义） */
   quests(): QuestState[];

@@ -4,6 +4,7 @@ import { DEFAULT_METHOD_ID, IDLE_CULTIVATION, OFFLINE, idleGameMinutes, settleId
 import { AppError } from '../../shared/errors.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
 import { advanceQuests } from '../quest/service.js';
+import { tickWorld } from '../world-events/service.js';
 import type { Clock } from '../../shared/runtime.js';
 import type { CultivationJobRecord, GameStore, GameTx, LogPayload } from '../store/types.js';
 
@@ -126,6 +127,7 @@ export function createCultivationService({ store, clock, offline }: CultivationD
       const diff = stateDiff(before, snapshot(tx));
       const payload = logOf(settled);
       const log = diff || payload ? tx.appendEvent({ actionId: null, eventType, before: diff?.before ?? null, after: diff?.after ?? null, at: now, log: payload }) : null;
+      tickWorld(tx, { at: now, actionId: null }); // 离线折算的时间里到期的世界事件在这里发生
       advanceQuests(tx, now, null); // 修炼进度变化可能让任务条件成立
       return respond(tx, settled, now, log);
     });

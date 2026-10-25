@@ -4,7 +4,7 @@ import type { GameTx } from '../store/types.js';
 type Snapshot = Record<string, unknown>;
 
 /** 嵌套展开的键：差异只列出变化的条目（如 inventory.pill_x、relations.npc_a>player:player_1） */
-const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests', 'locations'] as const;
+const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests', 'locations', 'worldEvents'] as const;
 
 /** 审计用快照：角色状态 + 全部已知物品的数量（0 也列出，避免「用完」被当作字段消失）+ 放置修炼状态 + NPC 状态与关系 */
 export function snapshot(tx: GameTx): Snapshot {
@@ -16,6 +16,8 @@ export function snapshot(tx: GameTx): Snapshot {
     cultivation: tx.runningJob() ? 'running' : 'idle',
     npcs: Object.fromEntries(tx.npcs().map((n) => [n.id, { locationId: n.locationId, status: n.status, goals: n.goals }])),
     memories: tx.memoryCounts(),
+    worldEvents: Object.fromEntries(tx.worldEvents().map((e) => [e.id, { state: e.state, rumored: e.rumored, participated: e.participated }])),
+    newsCount: tx.news().length,
     locations: Object.fromEntries(tx.locations().map((l) => [l.id, { status: l.status, reason: l.reason, visited: l.visited }])),
     quests: Object.fromEntries(tx.quests().map((q) => [q.id, { status: q.status, stepIndex: q.stepIndex, claimed: q.claimed }])),
     relations: Object.fromEntries(tx.relationships().map((r) => [`${r.npcId}>${r.targetType}:${r.targetId}`, { affinity: r.affinity, trust: r.trust, hostility: r.hostility }])),

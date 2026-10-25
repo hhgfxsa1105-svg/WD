@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { LocationStateSchema, LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type LocationState, type NpcMemory, type NpcState, type PlayerState, type Relationship } from '@jhz/contracts';
+import { NewsItemSchema, LocationStateSchema, LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type LocationState, type NewsItem, type NpcMemory, type NpcState, type WorldEventRecord, type PlayerState, type Relationship } from '@jhz/contracts';
 import { INITIAL_GAME_MINUTES, INITIAL_INVENTORY, MAX_ADVANCE_MINUTES, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
-import { initialLocations, normalizeLocationStatus, relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
+import { applyEventPatch, initialWorldEvent, initialWorldEvents, initialLocations, normalizeLocationStatus, relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 interface State {
@@ -16,6 +16,8 @@ interface State {
   quests: Map<string, QuestRecord>;
   locations: Map<string, LocationState>;
   gameMinutes: number;
+  worldEvents: Map<string, WorldEventRecord>;
+  news: NewsItem[];
   events: (AuditEvent & { log: LogRecord | null })[];
   seq: number;
 }
@@ -31,6 +33,8 @@ const cloneState = (s: State): State => ({
   quests: new Map([...s.quests].map(([k, v]) => [k, { ...v }])),
   locations: new Map([...s.locations].map(([k, v]) => [k, { ...v }])),
   gameMinutes: s.gameMinutes,
+  worldEvents: new Map([...s.worldEvents].map(([k, v]) => [k, { ...v }])),
+  news: structuredClone(s.news),
   events: structuredClone(s.events),
   seq: s.seq,
 });
@@ -69,6 +73,26 @@ function makeTx(s: State): GameTx {
       s.jobs.set(job.id, { ...job });
     },
     gameMinutes: () => s.gameMinutes,
+    worldEvents: () => [...s.worldEvents.values()].map((e) => ({ ...e })),
+    ensureWorldEvent(id) {
+      if (!s.worldEvents.has(id)) s.worldEvents.set(id, initialWorldEvent(id));
+      return { ...s.worldEvents.get(id)! };
+    },
+    updateWorldEvent(id, patch) {
+      const cur = s.worldEvents.get(id);
+      if (!cur) throw new AppError('NOT_FOUND', '没有这个事件');
+      const next = applyEventPatch(cur, patch);
+      s.worldEvents.set(id, next);
+      return { ...next };
+    },
+    news: (limit) => structuredClone(limit === undefined ? s.news : s.news.slice(-limit)),
+    addNews(input) {
+      if (!s.worldEvents.has(input.eventId)) throw new AppError('NOT_FOUND', '没有这个事件');
+      if (s.news.some((n) => n.eventId === input.eventId && n.kind === input.kind)) throw new AppError('CONFLICT', '这条消息已经发布过');
+      const item = NewsItemSchema.parse({ id: randomUUID(), ...input });
+      s.news.push(item);
+      return { ...item };
+    },
     advanceGameClock(minutes) {
       if (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_ADVANCE_MINUTES) throw new AppError('VALIDATION_FAILED', `游戏时间只能向前推进 0 到 ${MAX_ADVANCE_MINUTES} 分钟`);
       s.gameMinutes += minutes;
@@ -214,6 +238,8 @@ export function createMemoryGameStore(initial: PlayerState = createInitialPlayer
     quests: new Map(initialQuestRecords().map((q) => [q.id, q])),
     locations: new Map(initialLocations().map((l) => [l.id, l])),
     gameMinutes: INITIAL_GAME_MINUTES,
+    worldEvents: new Map(initialWorldEvents().map((e) => [e.id, e])),
+    news: [],
     relations: new Map(initialRelationships().map((r) => [relationKey(r.npcId, r.targetType, r.targetId), r])),
     events: [],
     seq: 0,
