@@ -36,7 +36,7 @@
 | AI 接入 | 服务端模型适配层（OpenAI 兼容协议，国产模型或中转站均可） |
 | 版本管理 | Git、GitHub |
 
-> 与最初计划的技术基线（Vue 3、Tailwind CSS、PostgreSQL）有两处不同：数据库改为 SQLite 是因为项目定位为**单机自用**（见 [单机调整说明](docs/adjustments.md)）；前端实际使用 React 与手写 CSS，这一偏离在项目启动时没有记录，已补记于单机调整说明，**等待项目负责人确认是否保留**。
+> 与最初计划的技术基线（Vue 3、Tailwind CSS、PostgreSQL）有两处不同：数据库改为 SQLite 是因为项目定位为**单机自用**（见 [单机调整说明](docs/adjustments.md)）；前端实际使用 React 与手写 CSS，这一偏离在项目启动时没有记录，已补记于单机调整说明，并已由项目负责人确认保留。
 
 ## *系统设计*
 
