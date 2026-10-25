@@ -72,7 +72,7 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
         const def = isLocationId(here) ? LOCATION_DEFS[here] : null;
         const npcsHere = tx
           .npcs()
-          .filter((n) => n.locationId === here && isNpcId(n.id))
+          .filter((n) => n.locationId === here && n.status !== 'away' && isNpcId(n.id))
           .map((n) => ({ id: n.id, name: NPC_DEFS[n.id as keyof typeof NPC_DEFS].name, role: NPC_DEFS[n.id as keyof typeof NPC_DEFS].role }));
         const known = (id: string) => id === here || states.get(id)?.visited === true;
         return {

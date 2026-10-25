@@ -21,7 +21,7 @@ export function importSave(db: Db, save: ParsedSave, now: number = Date.now()): 
     const before = store.read((tx) => snapshot(tx));
     store.transact((tx) => tx.appendEvent({ id: eventId, actionId: null, eventType: 'save.import', before: null, after: null, at: now, log: null }));
     writePlayerState(db, save.player);
-    writeWorldState(db, world, eventId);
+    writeWorldState(db, world, eventId, save.player.location.id);
     const diff = stateDiff(before, store.read((tx) => snapshot(tx)));
     if (diff) store.transact((tx) => tx.appendEvent({ actionId: null, eventType: 'save.state', before: diff.before, after: diff.after, at: now, log: null }));
   });

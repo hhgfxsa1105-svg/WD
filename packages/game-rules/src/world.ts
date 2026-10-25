@@ -5,8 +5,8 @@
 
 /** 地区：地点按地区分组（地图按地区展示） */
 export const REGION_DEFS = {
-  region_qingyun: { name: '青云山', summary: '青云派的山门所在，练功场、大殿与藏经阁都在这里。' },
-  region_foot: { name: '山下', summary: '山门之外：蜿蜒的山道，以及山脚的小镇。' },
+  region_qingyun: { name: '青云山', summary: '青云派的所在，群山环抱。' },
+  region_foot: { name: '山下', summary: '山门之外的世界。' },
 } as const satisfies Record<string, { name: string; summary: string }>;
 export type RegionId = keyof typeof REGION_DEFS;
 export const isRegionId = (id: string): id is RegionId => Object.hasOwn(REGION_DEFS, id);

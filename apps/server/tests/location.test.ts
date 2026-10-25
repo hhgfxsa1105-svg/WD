@@ -199,6 +199,14 @@ describe('移动与地图接口', () => {
     expect((await free('去山道', 'free-loc-key-0002')).statusCode).toBe(200);
     expect((await g.map()).current.id).toBe(PATH);
   });
+  it('地图不透露未发现的地点：地区简介不点名；离开的 NPC 不算在场', async () => {
+    const g = await game();
+    const text = JSON.stringify((await g.map()).regions);
+    for (const id of ['loc_qingyun_hall', 'loc_qingyun_library', TOWN]) expect(text).not.toContain(LOCATION_DEFS[id as keyof typeof LOCATION_DEFS].name.split(' · ')[1]!);
+    expect((await g.map()).current.npcs.map((n) => n.id)).toContain('npc_gate_guard');
+    g.store.transact((tx) => tx.setNpcStatus('npc_gate_guard', 'away'));
+    expect((await g.map()).current.npcs.map((n) => n.id)).not.toContain('npc_gate_guard');
+  });
   it('写接口不存在', async () => {
     const g = await game();
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) expect((await g.app.inject({ method, url: '/api/v1/world/map', payload: {} })).statusCode, method).toBe(404);
@@ -236,6 +244,16 @@ describe('存档：地点状态往返与校验', () => {
     const l = b.s.read((tx) => tx.locations());
     expect(l.filter((x) => x.visited).map((x) => x.id).sort()).toEqual([GATE, YARD].sort());
     expect(l.every((x) => x.status === 'open')).toBe(true);
+  });
+  it('v1 存档（只有角色）导入后，当前所在地也算去过', () => {
+    const a = sqliteGame();
+    const raw = exportRaw(a.s);
+    raw.schemaVersion = 1;
+    delete raw.world;
+    raw.player.location = { id: TOWN, name: '山下 · 小镇' };
+    const b = sqliteGame();
+    importSave(b.d.db, parseSaveFile(JSON.stringify(raw)));
+    expect(b.s.read((tx) => tx.locations()).filter((x) => x.visited).map((x) => x.id).sort()).toEqual([GATE, TOWN].sort());
   });
   it.each([
     ['封锁无原因', { id: PATH, status: 'blocked', reason: null, visited: false }],
