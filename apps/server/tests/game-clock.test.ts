@@ -217,43 +217,36 @@ describe('放置修炼推进游戏时间', () => {
   }
   const perTick = IDLE_CULTIVATION.gameMinutesPerTick;
 
-  it('现实 1 分钟 = 游戏 2 分钟（1 小时 = 1 时辰）；开始与停止本身不耗时', async () => {
+  it('在线挂机不推进游戏时间：结算、停止都不动，收益照常', async () => {
     const s = await idle();
     await s.start();
-    expect(s.t()).toBe(INITIAL_GAME_MINUTES);
-    s.time.t += 60 * MIN;
-    await s.settle();
-    // 结算只计入换成了收益的时间片（零头留到下次），所以略少于一个时辰
-    expect(s.t() - INITIAL_GAME_MINUTES).toBeGreaterThan(110);
-    expect(s.t() - INITIAL_GAME_MINUTES).toBeLessThanOrEqual(120);
-    await s.stop(); // 停下时零头也算过去了：整整一个时辰
-    expect(s.t() - INITIAL_GAME_MINUTES).toBe(120);
-  });
-  it('在线零头不丢也不重复计：分多次结算与一次结算总时间相同', async () => {
-    const a = await idle();
-    await a.start();
     for (let i = 0; i < 60; i++) {
-      a.time.t += MIN;
-      await a.settle();
+      s.time.t += MIN;
+      await s.settle();
     }
-    const b = await idle();
-    await b.start();
-    b.time.t += 60 * MIN;
-    await b.settle();
-    await a.stop();
-    await b.stop();
-    expect(a.t()).toBe(b.t());
-    expect(a.t() - INITIAL_GAME_MINUTES).toBe(60 * perTick);
-  });
-  it('产出不足一点经验的时间片先不计，攒够后一次计入', async () => {
-    const s = await idle();
-    await s.start();
-    s.time.t += 3 * MIN; // 3 片还没有收益
-    await s.settle();
+    const r = await s.stop();
+    expect(s.store.read((tx) => tx.player().realmProgress)).toBeGreaterThan(0); // 修炼收益照常
+    expect(r.player.realmProgress).toBeGreaterThan(0);
     expect(s.t()).toBe(INITIAL_GAME_MINUTES);
-    s.time.t += 2 * MIN; // 共 5 片 → 1 点经验
+  });
+  it('离线回来：这段时间按现实 1 小时 = 1 时辰一次性折算', async () => {
+    const s = await idle({ offline: {} });
+    await s.start();
+    s.time.t += 3 * 60 * MIN; // 离开三小时
     await s.settle();
-    expect(s.t() - INITIAL_GAME_MINUTES).toBe(5 * perTick);
+    expect(s.t() - INITIAL_GAME_MINUTES).toBe(3 * 120);
+    expect(perTick * 60).toBe(120);
+  });
+  it('离线结算之后又在线：不重复计入同一段时间', async () => {
+    const s = await idle({ offline: {} });
+    await s.start();
+    s.time.t += 2 * 60 * MIN;
+    await s.settle();
+    const t1 = s.t();
+    s.time.t += 2 * MIN; // 回来后在线 2 分钟
+    await s.settle();
+    await s.settle();
+    expect(s.t()).toBe(t1);
   });
   it('离线：最多折算 12 现实小时 = 1 个游戏日；超出部分作废', async () => {
     const s = await idle({ offline: {} });

@@ -47,7 +47,7 @@ test.describe('离线收益（真实离线策略）', () => {
   test('放置修炼区显示离线规则', async ({ page, server }) => {
     await load(page, server.url);
     await openActions(page);
-    await expect(page.getByLabel('离线规则')).toHaveText('离线最多计入 12 小时，按 50% 效率；修炼时现实 1 小时 = 游戏 1 时辰');
+    await expect(page.getByLabel('离线规则')).toHaveText('离线最多计入 12 小时，按 50% 效率；离线 1 小时 = 游戏 1 时辰');
   });
 
   test('在线（每次接触都会刷新）：分两段各 3 分钟领取，全额且不带离线说明', async ({ page, server }) => {
