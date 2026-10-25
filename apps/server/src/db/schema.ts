@@ -311,3 +311,29 @@ export const quests = sqliteTable(
     check('quests_claimed_rule', sql`${t.claimedAt} is null or ${t.status} = 'completed'`),
   ],
 );
+
+/** 与 @jhz/contracts 的 LOCATION_STATUSES 保持一致（测试校验） */
+export const DB_LOCATION_STATUSES = ['open', 'blocked'] as const;
+const locationStatusList = sql.raw(DB_LOCATION_STATUSES.map((r) => `'${r}'`).join(', '));
+
+/**
+ * 地点的可变状态（权威存档）。名字、地区、描述来自静态定义。
+ * 约束：封锁当且仅当有原因（原因 ≤60 字）；visited 只能是 0/1。
+ */
+export const locations = sqliteTable(
+  'locations',
+  {
+    id: text('id').primaryKey(),
+    status: text('status').notNull(),
+    reason: text('reason'),
+    visited: integer('visited').notNull().default(0),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    check('locations_id_format', sql`${t.id} glob 'loc_*' and length(${t.id}) <= 64`),
+    check('locations_status_valid', sql`${t.status} in (${locationStatusList})`),
+    check('locations_reason_rule', sql`(${t.status} = 'blocked') = (${t.reason} is not null)`),
+    check('locations_reason_len', sql`${t.reason} is null or length(${t.reason}) between 1 and 60`),
+    check('locations_visited_flag', sql`${t.visited} in (0, 1)`),
+  ],
+);

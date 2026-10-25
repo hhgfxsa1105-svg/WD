@@ -133,7 +133,7 @@ describe('不变量：任意操作序列下状态始终合法', () => {
 
 describe('审计可重放：按序重放全部审计差异，必须恰好得到最终状态', () => {
   type Snap = Record<string, unknown>;
-  const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests'];
+  const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests', 'locations'];
   const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
   function replay(w: World, initial: Snap): Snap {

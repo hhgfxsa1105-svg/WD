@@ -14,7 +14,7 @@ export type ParsedSave = ReturnType<typeof parseSaveFile>;
  * 文件内容不合格时在写入前抛出带中文原因的 Error。
  */
 export function importSave(db: Db, save: ParsedSave, now: number = Date.now()): { eventId: string } {
-  const world = save.world ? mergeImportedWorld(save.world, now) : null; // 先校验，再动库
+  const world = save.world ? mergeImportedWorld(save.world, now, save.player.location.id) : null; // 先校验，再动库
   const store = createSqliteGameStore(db);
   const eventId = randomUUID();
   db.transaction(() => {

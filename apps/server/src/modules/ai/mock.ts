@@ -58,7 +58,7 @@ export function createMockProvider(opts: MockOptions = {}): MockProvider {
 }
 
 /** 文字里提到的地点（按名字或常用叫法） */
-const PLACE_ALIASES: Record<string, RegExp> = { loc_qingyun_gate: /山门/, loc_qingyun_yard: /练功场|演武场/, loc_qingyun_hall: /大殿/, loc_qingyun_library: /藏经阁|书阁/ };
+const PLACE_ALIASES: Record<string, RegExp> = { loc_qingyun_gate: /山门/, loc_qingyun_yard: /练功场|演武场/, loc_qingyun_hall: /大殿/, loc_qingyun_library: /藏经阁|书阁/, loc_foot_path: /山道/, loc_foot_town: /小镇|镇上/ };
 const placeOf = (text: string): keyof typeof LOCATION_DEFS | null => (Object.entries(PLACE_ALIASES).find(([, re]) => re.test(text))?.[0] as keyof typeof LOCATION_DEFS | undefined) ?? null;
 
 const plan = (action: string, extra: Record<string, unknown> = {}) =>

@@ -10,6 +10,7 @@ export * from './ai-plan.js';
 export * from './ai-status.js';
 export * from './inventory.js';
 export * from './cultivation.js';
+export * from './location.js';
 export * from './log.js';
 export * from './audit.js';
 export * from './world.js';

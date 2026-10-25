@@ -11,6 +11,7 @@
 | `GET /player/inventory` | 背包（名称、评级、数量；数量为 0 的不返回） |
 | `POST /actions` | 提交行动，必带 `idempotencyKey`。`kind`：`fixed`（`actionId`: `cultivate`/`rest`）、`breakthrough`（`pillItemId`: 突破丹药物品 ID 或 `null`）、`free`（`input`: 玩家原话，由 AI 解析，见 `docs/ai-contract.md`）、`move`（`locationId`: 相邻地点 ID）、`quest`（`questId`、`op`: `accept` / `claim` / `abandon`） |
 | `POST /actions/:id/narrate` | 重新生成叙事（仅对叙事待补的行动调用 AI；只改文字，不改任何状态）。失败 503 `AI_UNAVAILABLE`；已完成的行动直接返回 |
+| `GET /world/map` | 世界地图（只读）：当前地点的全部详情（含描述与在场的人）；相邻出口只给名字、地区、开放/封锁与原因、是否去过、体力与耗时（分钟），**不含描述**；`regions` 只列去过或所在的地点，按地区分组 |
 | `GET /world/npcs` | NPC 列表：名字、身份、简介、当前地点与状态、目标、对玩家的态度（好感/信任/敌意）。只读 |
 | `GET /world/npcs/:id/memories` | 该 NPC 的记忆（按时间正序）。`?context=1` 返回对话上下文用的精选（≤8 条、≤600 字）。只读；未知 NPC 404 |
 | `GET /quests` | 任务列表：名称、说明、状态、步骤完成情况、奖励说明、是否已领取、锁定原因。只读 |

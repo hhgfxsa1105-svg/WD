@@ -83,7 +83,7 @@ export function App() {
             ) : sheet === '背包' ? (
               <InventoryPanel items={g.inventory} />
             ) : sheet === '地图' ? (
-              <MapPanel player={g.player} npcs={g.npcs} busy={g.busy} error={g.error} onMove={g.runMove} onOpenNpc={(id) => setSheet(`npc:${id}`)} />
+              <MapPanel player={g.player} npcs={g.npcs} map={g.map} busy={g.busy} error={g.error} onMove={g.runMove} onOpenNpc={(id) => setSheet(`npc:${id}`)} />
             ) : sheet === '任务' ? (
               <QuestPanel quests={g.quests} busy={g.busy} error={g.error} onOp={g.runQuestOp} />
             ) : openNpc ? (

@@ -64,6 +64,13 @@
       "when": 1792842550350,
       "tag": "0008_quests_and_move_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1792898966979,
+      "tag": "0009_locations",
+      "breakpoints": true
     }
   ]
 }

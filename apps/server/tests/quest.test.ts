@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { describe, expect, it } from 'vitest';
 import { ACTION_KINDS, ActionResponseSchema, AuditActionResponseSchema, ErrorResponseSchema, QUEST_STATUSES, QuestListResponseSchema, type QuestView } from '@jhz/contracts';
-import { MOVE_STAMINA_COST, QUEST_DEFS, createInitialPlayer, fixedRng } from '@jhz/game-rules';
+import { moveCost, QUEST_DEFS, createInitialPlayer, fixedRng } from '@jhz/game-rules';
 import { buildApp } from '../src/app.js';
 import { MIGRATIONS_DIR, openDatabase } from '../src/db/connection.js';
 import { runMigrations } from '../src/db/migrate.js';
@@ -218,12 +218,12 @@ describe('移动', () => {
     const g = await game();
     const r = g.ok(await g.post({ kind: 'move', locationId: 'loc_qingyun_yard', idempotencyKey: 'move-key-0001' }));
     expect(r.player.location).toEqual({ id: 'loc_qingyun_yard', name: '青云山 · 练功场' });
-    expect(r.player.stamina).toBe(50 - MOVE_STAMINA_COST);
-    expect(r.changes).toEqual([{ stat: 'stamina', delta: -MOVE_STAMINA_COST }]);
+    expect(r.player.stamina).toBe(50 - moveCost('loc_qingyun_gate', 'loc_qingyun_yard')!.stamina);
+    expect(r.changes).toEqual([{ stat: 'stamina', delta: -moveCost('loc_qingyun_gate', 'loc_qingyun_yard')!.stamina }]);
     expect(r.status).toBe('COMPLETED');
     const again = g.ok(await g.post({ kind: 'move', locationId: 'loc_qingyun_yard', idempotencyKey: 'move-key-0001' }));
     expect(again).toEqual(r);
-    expect(g.store.read((tx) => tx.player().stamina)).toBe(50 - MOVE_STAMINA_COST);
+    expect(g.store.read((tx) => tx.player().stamina)).toBe(50 - moveCost('loc_qingyun_gate', 'loc_qingyun_yard')!.stamina);
     const audit = AuditActionResponseSchema.parse((await g.app.inject({ method: 'GET', url: `/api/v1/audit/actions/${r.actionId}` })).json());
     expect(audit.events[0]).toMatchObject({ eventType: 'action.move' });
     expect(audit.events[0]!.after).toMatchObject({ location: { id: 'loc_qingyun_yard' } });
@@ -239,7 +239,7 @@ describe('移动', () => {
     expect(g.store.read((tx) => tx.player())).toEqual(before);
   });
   it('体力不足不能赶路', async () => {
-    const g = await game({ player: { stamina: MOVE_STAMINA_COST - 1 } });
+    const g = await game({ player: { stamina: (moveCost('loc_qingyun_gate', 'loc_qingyun_yard')!.stamina - 1) } });
     expect(g.err(await g.move('loc_qingyun_yard'), 422).message).toContain('体力不足');
   });
   it('请求格式：多余字段、缺字段被拒绝', async () => {
@@ -510,7 +510,7 @@ describe('AI 的 travel 意图', () => {
     const res = g.ok(await free(g, '去练功场看看'));
     expect(res.ai).toMatchObject({ actionType: 'travel', executed: true });
     expect(res.player.location.id).toBe('loc_qingyun_yard');
-    expect(res.player.stamina).toBe(50 - MOVE_STAMINA_COST);
+    expect(res.player.stamina).toBe(50 - moveCost('loc_qingyun_gate', 'loc_qingyun_yard')!.stamina);
     const audit = AuditActionResponseSchema.parse((await g.app.inject({ method: 'GET', url: `/api/v1/audit/actions/${res.actionId}` })).json());
     expect(audit.events[0]!.eventType).toBe('action.free.travel');
   });

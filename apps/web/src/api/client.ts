@@ -3,6 +3,7 @@ import {
   AiStatusResponseSchema,
   GreetResponseSchema,
   NpcListResponseSchema,
+  WorldMapResponseSchema,
   NpcMemoryListResponseSchema,
   QuestListResponseSchema,
   RelationExplainResponseSchema,
@@ -17,6 +18,7 @@ import {
   type GreetResponse,
   type NpcMemory,
   type NpcView,
+  type WorldMapResponse,
   type QuestOp,
   type QuestView,
   type RelationExplainResponse,
@@ -110,6 +112,8 @@ export const submitQuestOp = (questId: string, op: QuestOp, idempotencyKey = new
   submit({ kind: 'quest', idempotencyKey, questId, op });
 
 export const fetchQuests = async (): Promise<QuestView[]> => (await request('/api/v1/quests', QuestListResponseSchema)).quests;
+export const fetchMap = (): Promise<WorldMapResponse> => request('/api/v1/world/map', WorldMapResponseSchema);
+
 export const fetchNpcs = async (): Promise<NpcView[]> => (await request('/api/v1/world/npcs', NpcListResponseSchema)).npcs;
 
 /** 对话上下文用的精选记忆（条数与字数受限） */

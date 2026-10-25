@@ -65,6 +65,11 @@ app.post('/__test/player', async (req) => {
   const next = store.transact((tx) => tx.savePlayer(PlayerStateSchema.parse({ ...tx.player(), ...patch })));
   return { version: next.version };
 });
+app.post('/__test/location', async (req) => {
+  const { id, status, reason } = req.body as { id: string; status: 'open' | 'blocked'; reason?: string };
+  store.transact((tx) => tx.setLocationStatus(id, status, reason ?? null));
+  return { ok: true };
+});
 app.post('/__test/item', async (req) => {
   const { itemId, quantity } = req.body as { itemId: string; quantity: number };
   store.transact((tx) => tx.addItem(itemId, quantity));

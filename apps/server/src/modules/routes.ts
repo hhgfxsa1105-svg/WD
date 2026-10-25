@@ -4,6 +4,7 @@ import {
   AuditActionResponseSchema,
   InventoryResponseSchema,
   GreetResponseSchema,
+  WorldMapResponseSchema,
   NpcListResponseSchema,
   NpcMemoryListResponseSchema,
   RelationExplainResponseSchema,
@@ -13,7 +14,7 @@ import {
   SubmitActionRequestSchema,
   WorldTimeResponseSchema,
 } from '@jhz/contracts';
-import { NPC_DEFS, isNpcId, locationName, selectMemories } from '@jhz/game-rules';
+import { LOCATION_DEFS, NPC_DEFS, REGION_DEFS, isLocationId, isNpcId, locationName, moveCost, neighborsOf, selectMemories } from '@jhz/game-rules';
 import { z } from 'zod';
 import { AppError, parseWith } from '../shared/errors.js';
 import type { ActionService } from './action/service.js';
@@ -55,6 +56,41 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
       },
       clockBehindMs: clockBehindMs(),
     }),
+  );
+
+  // 世界地图（只读）：当前地点的全部详情；相邻出口只显示名字、状态、体力与耗时；已知地点按地区分组
+  app.get('/api/v1/world/map', async () =>
+    WorldMapResponseSchema.parse(
+      store.read((tx) => {
+        const here = tx.player().location.id;
+        const states = new Map(tx.locations().map((l) => [l.id, l]));
+        const region = (id: string) => {
+          const r = isLocationId(id) ? LOCATION_DEFS[id].region : 'region_qingyun';
+          return { id: r, name: REGION_DEFS[r].name };
+        };
+        const cur = states.get(here);
+        const def = isLocationId(here) ? LOCATION_DEFS[here] : null;
+        const npcsHere = tx
+          .npcs()
+          .filter((n) => n.locationId === here && isNpcId(n.id))
+          .map((n) => ({ id: n.id, name: NPC_DEFS[n.id as keyof typeof NPC_DEFS].name, role: NPC_DEFS[n.id as keyof typeof NPC_DEFS].role }));
+        const known = (id: string) => id === here || states.get(id)?.visited === true;
+        return {
+          current: { id: here, name: tx.player().location.name, region: region(here), description: def?.description ?? '', status: cur?.status ?? 'open', reason: cur?.reason ?? null, npcs: npcsHere },
+          exits: neighborsOf(here).map((id) => {
+            const c = moveCost(here, id)!;
+            const st = states.get(id);
+            return { id, name: LOCATION_DEFS[id].name, region: region(id), status: st?.status ?? 'open', reason: st?.reason ?? null, visited: st?.visited ?? false, stamina: c.stamina, minutes: c.minutes };
+          }),
+          regions: Object.entries(REGION_DEFS).flatMap(([rid, r]) => {
+            const locs = Object.entries(LOCATION_DEFS)
+              .filter(([id, d]) => d.region === rid && known(id))
+              .map(([id, d]) => ({ id, name: d.name, visited: states.get(id)?.visited === true, current: id === here }));
+            return locs.length > 0 ? [{ id: rid, name: r.name, summary: r.summary, locations: locs }] : [];
+          }),
+        };
+      }),
+    ),
   );
 
   // NPC 列表：静态显示文字 + 当前状态 + 对玩家的态度

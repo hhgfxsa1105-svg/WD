@@ -39,7 +39,7 @@ test.describe('地图与移动', () => {
     await expect(sheet(page).getByRole('button', { name: '查看赵铁牛' })).toContainText('守门弟子');
     await sheet(page).getByRole('button', { name: '前往青云山 · 练功场' }).click();
     await expect(where(page)).toContainText('练功场');
-    await expect(entries(page).last()).toContainText('来到青云山 · 练功场');
+    await expect(entries(page).last()).toContainText('前往青云山 · 练功场');
     await expect(entries(page).last().locator('.chip')).toContainText('体力 −3');
     // 地图刷新：现在能去山门、大殿、藏经阁，这里是大师姐
     await expect(sheet(page).getByRole('button', { name: /前往青云山 · (山门|大殿|藏经阁)/ })).toHaveCount(3);
@@ -51,8 +51,39 @@ test.describe('地图与移动', () => {
     await server.setPlayer({ stamina: 2 });
     await load(page, server.url);
     await nav(page, '地图');
-    await expect(sheet(page).getByRole('button', { name: /^前往/ })).toBeDisabled();
+    for (const b of await sheet(page).getByRole('button', { name: /^前往/ }).all()) await expect(b).toBeDisabled();
     await expect(sheet(page)).toContainText('体力不足，先休息一下再赶路');
+  });
+
+  test('山下：山门可去山道，山道通小镇；每条路的体力与耗时由服务端给出', async ({ page, server }) => {
+    await load(page, server.url);
+    await nav(page, '地图');
+    const row = (name: string) => sheet(page).locator('.w-row', { has: page.getByRole('button', { name: `前往${name}` }) });
+    await expect(row('青云山 · 练功场')).toContainText('约 30 分钟');
+    await expect(row('山下 · 山道')).toContainText('体力 −3');
+    await expect(row('山下 · 山道')).toContainText('约 60 分钟');
+    await expect(row('山下 · 山道')).toContainText('没去过');
+    await sheet(page).getByRole('button', { name: '前往山下 · 山道' }).click();
+    await expect(where(page)).toContainText('山道');
+    await expect(sheet(page).getByRole('button', { name: '前往山下 · 小镇' })).toBeEnabled();
+    await sheet(page).getByRole('button', { name: '前往山下 · 小镇' }).click();
+    await expect(where(page)).toContainText('小镇');
+    // 回头：山道已经去过，不再标「没去过」
+    await expect(sheet(page).locator('.w-row', { has: page.getByRole('button', { name: '前往山下 · 山道' }) })).not.toContainText('没去过');
+  });
+
+  test('地点被封锁：「前往」置灰并显示原因；解除后恢复', async ({ page, server }) => {
+    await server.setLocation('loc_foot_path', 'blocked', '山道塌方');
+    await load(page, server.url);
+    await nav(page, '地图');
+    const row = sheet(page).locator('.w-row', { has: page.getByRole('button', { name: '前往山下 · 山道' }) });
+    await expect(row.getByRole('button')).toBeDisabled();
+    await expect(row).toContainText('过不去：山道塌方');
+    await expect(sheet(page).getByRole('button', { name: '前往青云山 · 练功场' })).toBeEnabled(); // 其他路不受影响
+    await server.setLocation('loc_foot_path', 'open');
+    await load(page, server.url);
+    await nav(page, '地图');
+    await expect(sheet(page).getByRole('button', { name: '前往山下 · 山道' })).toBeEnabled();
   });
 
   test('用自由输入说「去练功场」；说「去大殿」被服务端拒绝并说明原因', async ({ page, server }) => {

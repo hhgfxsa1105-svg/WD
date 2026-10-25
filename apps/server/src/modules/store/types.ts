@@ -1,5 +1,5 @@
-import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LogRecord, NpcMemory, NpcState, PlayerState, QuestState, QuestStatus, Relationship } from '@jhz/contracts';
-import type { MemoryEventKind, NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
+import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LocationState, LogRecord, NpcMemory, NpcState, PlayerState, QuestState, QuestStatus, Relationship } from '@jhz/contracts';
+import type { LocationStatus, MemoryEventKind, NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
 
 export interface CultivationJobRecord {
   id: string;
@@ -74,6 +74,13 @@ export interface GameTx {
   /** 移动 NPC；NPC 或地点不存在抛 NOT_FOUND */
   moveNpc(npcId: string, locationId: string): NpcState;
   setNpcStatus(npcId: string, status: NpcStatus): NpcState;
+
+  /** 全部地点的可变状态（名字、地区、描述来自静态定义） */
+  locations(): LocationState[];
+  /** 设置地点状态：封锁必须有原因（≤60 字），开放不能有；地点不存在 NOT_FOUND，不合法 VALIDATION_FAILED */
+  setLocationStatus(id: string, status: LocationStatus, reason: string | null): LocationState;
+  /** 标记玩家去过这个地点（幂等）；地点不存在 NOT_FOUND */
+  visitLocation(id: string): LocationState;
 
   /** 全部任务的可变状态（名字、步骤、奖励来自静态定义） */
   quests(): QuestState[];

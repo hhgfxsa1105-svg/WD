@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type NpcMemory, type NpcState, type PlayerState, type Relationship } from '@jhz/contracts';
+import { LocationStateSchema, LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type LocationState, type NpcMemory, type NpcState, type PlayerState, type Relationship } from '@jhz/contracts';
 import { INITIAL_INVENTORY, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
-import { relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
+import { initialLocations, normalizeLocationStatus, relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 interface State {
@@ -14,6 +14,7 @@ interface State {
   relations: Map<string, Relationship>;
   memories: Map<string, NpcMemory>;
   quests: Map<string, QuestRecord>;
+  locations: Map<string, LocationState>;
   events: (AuditEvent & { log: LogRecord | null })[];
   seq: number;
 }
@@ -27,6 +28,7 @@ const cloneState = (s: State): State => ({
   relations: new Map([...s.relations].map(([k, v]) => [k, { ...v }])),
   memories: new Map([...s.memories].map(([k, v]) => [k, { ...v }])),
   quests: new Map([...s.quests].map(([k, v]) => [k, { ...v }])),
+  locations: new Map([...s.locations].map(([k, v]) => [k, { ...v }])),
   events: structuredClone(s.events),
   seq: s.seq,
 });
@@ -63,6 +65,20 @@ function makeTx(s: State): GameTx {
         if (other) throw new AppError('CONFLICT', '已有进行中的修炼');
       }
       s.jobs.set(job.id, { ...job });
+    },
+    locations: () => [...s.locations.values()].map((l) => ({ ...l })),
+    setLocationStatus(id, status, reason) {
+      assertLocation(id);
+      const n = normalizeLocationStatus(status, reason);
+      const next = LocationStateSchema.parse({ ...s.locations.get(id)!, status: n.status, reason: n.reason });
+      s.locations.set(id, next);
+      return { ...next };
+    },
+    visitLocation(id) {
+      assertLocation(id);
+      const next = { ...s.locations.get(id)!, visited: true };
+      s.locations.set(id, next);
+      return { ...next };
     },
     relationHistory(npcId, target) {
       const key = relationKey(npcId, target.type, target.id);
@@ -188,6 +204,7 @@ export function createMemoryGameStore(initial: PlayerState = createInitialPlayer
     npcs: new Map(initialNpcs().map((n) => [n.id, n])),
     memories: new Map(),
     quests: new Map(initialQuestRecords().map((q) => [q.id, q])),
+    locations: new Map(initialLocations().map((l) => [l.id, l])),
     relations: new Map(initialRelationships().map((r) => [relationKey(r.npcId, r.targetType, r.targetId), r])),
     events: [],
     seq: 0,

@@ -77,9 +77,11 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
     }
 
     if (req.kind === 'move') {
-      const r = resolveMove(player, req.locationId);
+      const states = new Map(tx.locations().map((l) => [l.id, l.reason]));
+      const r = resolveMove(player, req.locationId, (id) => states.get(id) ?? null);
       if (!r.ok) throw new AppError(r.code === 'UNKNOWN_LOCATION' ? 'NOT_FOUND' : 'PRECONDITION_FAILED', r.message);
       tx.savePlayer(r.player);
+      tx.visitLocation(req.locationId); // 到过的地点才能看到详情
       return { changes: r.changes, narrative: r.narrative, breakthrough: null, log: { type: 'fixed', narrative: r.narrative, changes: r.changes, breakthrough: null, idle: null, note: null } };
     }
 

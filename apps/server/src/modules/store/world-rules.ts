@@ -1,5 +1,5 @@
-import { NpcMemorySchema, NpcStateSchema, QuestStateSchema, RelationshipSchema, type NpcMemory, type NpcState, type QuestState, type QuestStatus, type Relationship } from '@jhz/contracts';
-import { isKnownItem, QUEST_DEFS, canTransition, initialQuestStatus, isQuestId, type QuestId, MEMORY_EVENTS, planCompaction, INITIAL_RELATIONS, NPC_DEFS, NPC_STATUSES, applyRelationDelta, isLocationId, isNpcId, type RelationDelta, type RelationTargetType } from '@jhz/game-rules';
+import { LocationStateSchema, NpcMemorySchema, NpcStateSchema, QuestStateSchema, RelationshipSchema, type LocationState, type NpcMemory, type NpcState, type QuestState, type QuestStatus, type Relationship } from '@jhz/contracts';
+import { INITIAL_VISITED, LOCATION_DEFS, LOCATION_REASON_MAX, isKnownItem, QUEST_DEFS, canTransition, initialQuestStatus, isQuestId, type QuestId, MEMORY_EVENTS, planCompaction, INITIAL_RELATIONS, NPC_DEFS, NPC_STATUSES, applyRelationDelta, isLocationId, isNpcId, type RelationDelta, type RelationTargetType } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 
 /** 单机固定的玩家 ID（关系对象为玩家时使用） */
@@ -45,9 +45,11 @@ export function nextRelationship(current: Relationship | undefined, npcId: strin
  * 文件里缺少的 NPC / 关系用初始值补齐。不合格时抛出带中文原因的 Error。
  */
 export function mergeImportedWorld(
-  world: { npcs: NpcState[]; relationships: Relationship[]; memories?: NpcMemory[]; quests?: QuestState[]; inventory?: { itemId: string; quantity: number }[] },
+  world: { npcs: NpcState[]; relationships: Relationship[]; memories?: NpcMemory[]; quests?: QuestState[]; locations?: LocationState[]; inventory?: { itemId: string; quantity: number }[] },
   now: number = Date.now(),
-): { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; inventory: { itemId: string; quantity: number }[] | null } {
+  /** 玩家当前所在地点：导入后它一定是「去过」的 */
+  currentLocationId: string = 'loc_qingyun_gate',
+): { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; locations: LocationState[]; inventory: { itemId: string; quantity: number }[] | null } {
   const npcs = new Map(initialNpcs().map((n) => [n.id, n]));
   const seenNpc = new Set<string>();
   for (const n of world.npcs) {
@@ -91,7 +93,7 @@ export function mergeImportedWorld(
     }
     inventory = world.inventory.filter((i) => i.quantity > 0).map((i) => ({ ...i }));
   }
-  return { npcs: [...npcs.values()], relationships: [...rels.values()], memories, quests: mergeImportedQuests(world.quests ?? [], now), inventory };
+  return { npcs: [...npcs.values()], relationships: [...rels.values()], memories, quests: mergeImportedQuests(world.quests ?? [], now), locations: mergeImportedLocations(world.locations ?? [], currentLocationId), inventory };
 }
 
 /** 校验并规范化导入的任务状态：任务必须存在、不重复；步数、状态与领取标记必须自洽；进行中或已完成的任务其前置任务必须已完成 */
@@ -147,8 +149,8 @@ export function compactMemories(
 }
 
 /** 导出存档用的世界快照：NPC 状态、关系与全部记忆 */
-export function snapshotWorld(tx: { npcs(): NpcState[]; relationships(): Relationship[]; memories(npcId: string): NpcMemory[]; quests(): QuestState[]; inventory(): { itemId: string; quantity: number }[] }) {
-  return { npcs: tx.npcs(), relationships: tx.relationships(), memories: tx.npcs().flatMap((n) => tx.memories(n.id)), quests: tx.quests(), inventory: tx.inventory().map((i) => ({ itemId: i.itemId, quantity: i.quantity })) };
+export function snapshotWorld(tx: { npcs(): NpcState[]; relationships(): Relationship[]; memories(npcId: string): NpcMemory[]; quests(): QuestState[]; locations(): LocationState[]; inventory(): { itemId: string; quantity: number }[] }) {
+  return { npcs: tx.npcs(), relationships: tx.relationships(), memories: tx.npcs().flatMap((n) => tx.memories(n.id)), quests: tx.quests(), locations: tx.locations(), inventory: tx.inventory().map((i) => ({ itemId: i.itemId, quantity: i.quantity })) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -212,4 +214,41 @@ export function relationChangeOf(key: string, before: unknown, after: unknown): 
   const a = asVals(((after as { relations?: Record<string, unknown> } | null)?.relations ?? {})[key]);
   if (!a) return null;
   return { before: asVals(((before as { relations?: Record<string, unknown> } | null)?.relations ?? {})[key]), after: a };
+}
+
+/* ------------------------------------------------------------------ */
+/* 地点                                                                */
+/* ------------------------------------------------------------------ */
+
+/** 初始地点状态：全部开放；只有出生的山门去过 */
+export const initialLocations = (): LocationState[] =>
+  Object.keys(LOCATION_DEFS).map((id) => LocationStateSchema.parse({ id, status: 'open', reason: null, visited: (INITIAL_VISITED as readonly string[]).includes(id) }));
+
+/** 校验并规范化一次地点状态设置：封锁必须有原因（去掉控制字符与首尾空白后 1..60 字），开放不能有原因 */
+export function normalizeLocationStatus(status: string, reason: string | null): { status: 'open' | 'blocked'; reason: string | null } {
+  if (status !== 'open' && status !== 'blocked') throw new AppError('VALIDATION_FAILED', '地点状态不合法');
+  if (status === 'open') {
+    if (reason !== null) throw new AppError('VALIDATION_FAILED', '开放的地点不能有封锁原因');
+    return { status, reason: null };
+  }
+  // eslint-disable-next-line no-control-regex
+  const r = (reason ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (r.length === 0 || [...r].length > LOCATION_REASON_MAX) throw new AppError('VALIDATION_FAILED', `封锁原因需要 1 到 ${LOCATION_REASON_MAX} 字`);
+  return { status, reason: r };
+}
+
+/** 校验并规范化导入的地点状态：地点必须存在、不重复；缺少的用初始值补齐；玩家当前所在地与出生地必须标记为去过 */
+export function mergeImportedLocations(imported: LocationState[], currentLocationId: string): LocationState[] {
+  const byId = new Map(initialLocations().map((l) => [l.id, l]));
+  const seen = new Set<string>();
+  for (const l of imported) {
+    if (!Object.hasOwn(LOCATION_DEFS, l.id)) throw new Error(`存档里有未知地点：${l.id}`);
+    if (seen.has(l.id)) throw new Error(`存档里地点重复：${l.id}`);
+    seen.add(l.id);
+    if (l.reason !== null && [...l.reason].length > LOCATION_REASON_MAX) throw new Error(`存档里地点 ${l.id} 的封锁原因过长`);
+    byId.set(l.id, l);
+  }
+  const here = byId.get(currentLocationId);
+  if (here && !here.visited) byId.set(currentLocationId, { ...here, visited: true }); // 站在这里，当然去过
+  return [...byId.values()];
 }
