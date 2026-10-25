@@ -6,12 +6,13 @@ import {
   type StateChange,
   type SubmitActionRequest,
 } from '@jhz/contracts';
-import { pillGradeOf, resolveBreakthrough, resolveFixedAction, resolveMove, type Rng } from '@jhz/game-rules';
+import { ACTION_MINUTES, pillGradeOf, resolveBreakthrough, resolveFixedAction, resolveMove, type Rng } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import type { Clock } from '../../shared/runtime.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
 import { breakthroughWitnesses, recordNpcMemories } from '../npc/memory.js';
 import { advanceQuests, resolveQuestOp } from '../quest/service.js';
+import { tickWorld } from '../world-events/service.js';
 import type { GameStore, GameTx, LogPayload } from '../store/types.js';
 
 /** 状态机允许的流转；已 COMMITTED 的行动不得再次结算 */
@@ -68,6 +69,7 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       const r = resolveFixedAction(player, req.actionId);
       if (!r.ok) throw new AppError('PRECONDITION_FAILED', r.message);
       tx.savePlayer(r.player);
+      tx.advanceGameClock(ACTION_MINUTES[req.actionId]);
       return {
         changes: r.changes,
         narrative: r.narrative,
@@ -77,14 +79,18 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
     }
 
     if (req.kind === 'move') {
-      const r = resolveMove(player, req.locationId);
+      const states = new Map(tx.locations().map((l) => [l.id, l.reason]));
+      const r = resolveMove(player, req.locationId, (id) => states.get(id) ?? null);
       if (!r.ok) throw new AppError(r.code === 'UNKNOWN_LOCATION' ? 'NOT_FOUND' : 'PRECONDITION_FAILED', r.message);
       tx.savePlayer(r.player);
+      tx.visitLocation(req.locationId); // 到过的地点才能看到详情
+      tx.advanceGameClock(r.minutes);
       return { changes: r.changes, narrative: r.narrative, breakthrough: null, log: { type: 'fixed', narrative: r.narrative, changes: r.changes, breakthrough: null, idle: null, note: null } };
     }
 
     if (req.kind === 'quest') {
       const r = resolveQuestOp(tx, req, now);
+      tx.advanceGameClock(ACTION_MINUTES.quest);
       return { changes: r.changes, narrative: r.narrative, breakthrough: null, log: r.log };
     }
 
@@ -96,10 +102,11 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       if (!pillGrade) throw new AppError('PRECONDITION_FAILED', '该物品不能用于突破');
       pillName = tx.inventory().find((i) => i.itemId === req.pillItemId)?.name ?? null;
     }
-    const r = resolveBreakthrough(player, { now, rng, pillGrade });
+    const r = resolveBreakthrough(player, { now: tx.gameMinutes(), rng, pillGrade, elapsed: ACTION_MINUTES.breakthrough });
     if (!r.ok) throw new AppError('PRECONDITION_FAILED', r.message);
     if (req.pillItemId) tx.takeItem(req.pillItemId, 1);
     tx.savePlayer(r.player);
+    tx.advanceGameClock(ACTION_MINUTES.breakthrough);
     const breakthrough = { outcome: r.outcome, chancePercent: r.chancePercent, roll: r.roll };
     return {
       changes: r.changes,
@@ -185,6 +192,8 @@ export function createActionService({ store, clock, rng, narratable }: ActionDep
       // 在场的 NPC 会记住这次突破（记忆与关系变化记在单独的 npc.memory 事件里）
       const bt = resolved.log.breakthrough;
       if (bt) recordNpcMemories(tx, { sourceEventId: eventId, actionId, at: now, entries: breakthroughWitnesses(tx, bt.outcome, bt.realmTo) });
+      // 游戏时间推进了：到期的世界事件在这里发生（传闻、开始、了结，各自一个后果事件）
+      tickWorld(tx, { at: now, actionId });
       // 这次行动可能让任务条件成立（到达地点、修炼进度、突破……）
       advanceQuests(tx, now, actionId);
       const response = ActionResponseSchema.parse({ ...draft, log });

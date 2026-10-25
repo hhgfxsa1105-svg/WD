@@ -3,15 +3,28 @@
  * 所以改名字不需要迁移，实体 ID 是唯一的稳定引用。
  */
 
+/** 地区：地点按地区分组（地图按地区展示） */
+export const REGION_DEFS = {
+  region_qingyun: { name: '青云山', summary: '青云派的所在，群山环抱。' },
+  region_foot: { name: '山下', summary: '山门之外的世界。' },
+} as const satisfies Record<string, { name: string; summary: string }>;
+export type RegionId = keyof typeof REGION_DEFS;
+export const isRegionId = (id: string): id is RegionId => Object.hasOwn(REGION_DEFS, id);
+
 export interface LocationDef {
   name: string;
+  region: RegionId;
+  /** 站在这里时才看得到的描述（相邻但没去过的地点只显示名字与状态） */
+  description: string;
 }
 
 export const LOCATION_DEFS = {
-  loc_qingyun_gate: { name: '青云山 · 山门' },
-  loc_qingyun_yard: { name: '青云山 · 练功场' },
-  loc_qingyun_hall: { name: '青云山 · 大殿' },
-  loc_qingyun_library: { name: '青云山 · 藏经阁' },
+  loc_qingyun_gate: { name: '青云山 · 山门', region: 'region_qingyun', description: '两根青石门柱立在山口，门外是下山的路，门内钟声隐约。' },
+  loc_qingyun_yard: { name: '青云山 · 练功场', region: 'region_qingyun', description: '青石铺成的宽阔场地，兵器架立在四周，常有弟子在此练功。' },
+  loc_qingyun_hall: { name: '青云山 · 大殿', region: 'region_qingyun', description: '殿内香烟缭绕，正中供着青云派历代祖师的牌位。' },
+  loc_qingyun_library: { name: '青云山 · 藏经阁', region: 'region_qingyun', description: '三层木楼，书卷的气味扑面而来，窗边的案上总摊着一本旧书。' },
+  loc_foot_path: { name: '山下 · 山道', region: 'region_foot', description: '一条石阶与土路交错的山道，两侧松林幽深，是上下山的必经之路。' },
+  loc_foot_town: { name: '山下 · 小镇', region: 'region_foot', description: '山脚的小镇，客栈、茶摊和杂货铺沿街排开，往来的行人不少。' },
 } as const satisfies Record<string, LocationDef>;
 export type LocationId = keyof typeof LOCATION_DEFS;
 
@@ -99,20 +112,48 @@ export const INITIAL_RELATIONS: readonly RelationSeed[] = [
 ];
 
 /* ------------------------------------------------------------------ */
-/* 移动：地点之间的连接与体力消耗                                          */
+/* 移动：地点之间的连接、体力与耗时                                        */
 /* ------------------------------------------------------------------ */
 
-/** 地点的相邻关系（无向）：山门 — 练功场 — 大殿；练功场 — 藏经阁 */
-export const LOCATION_LINKS: readonly (readonly [LocationId, LocationId])[] = [
-  ['loc_qingyun_gate', 'loc_qingyun_yard'],
-  ['loc_qingyun_yard', 'loc_qingyun_hall'],
-  ['loc_qingyun_yard', 'loc_qingyun_library'],
+/** 两个地点之间的一条路（无向）：每条路单独定义体力消耗与游戏内耗时（分钟） */
+export interface LinkDef {
+  a: LocationId;
+  b: LocationId;
+  stamina: number;
+  /** 走完这条路所需的游戏分钟（游戏时钟由 T-022a 接入） */
+  minutes: number;
+}
+
+/** 山门 — 练功场 — 大殿；练功场 — 藏经阁；山门 — 山道 — 小镇 */
+export const LOCATION_LINKS: readonly LinkDef[] = [
+  { a: 'loc_qingyun_gate', b: 'loc_qingyun_yard', stamina: 3, minutes: 30 },
+  { a: 'loc_qingyun_yard', b: 'loc_qingyun_hall', stamina: 3, minutes: 30 },
+  { a: 'loc_qingyun_yard', b: 'loc_qingyun_library', stamina: 3, minutes: 30 },
+  { a: 'loc_qingyun_gate', b: 'loc_foot_path', stamina: 3, minutes: 60 },
+  { a: 'loc_foot_path', b: 'loc_foot_town', stamina: 3, minutes: 60 },
 ];
 
-/** 每次移动消耗的体力 */
-export const MOVE_STAMINA_COST = 3;
+export const linkBetween = (x: string, y: string): LinkDef | null => LOCATION_LINKS.find((l) => (l.a === x && l.b === y) || (l.a === y && l.b === x)) ?? null;
 
-export const areAdjacent = (a: string, b: string): boolean => LOCATION_LINKS.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+export const areAdjacent = (x: string, y: string): boolean => linkBetween(x, y) !== null;
 
 /** 从某地点出发一步能到的地点 */
-export const neighborsOf = (id: string): LocationId[] => LOCATION_LINKS.flatMap(([x, y]) => (x === id ? [y] : y === id ? [x] : []));
+export const neighborsOf = (id: string): LocationId[] => LOCATION_LINKS.flatMap((l) => (l.a === id ? [l.b] : l.b === id ? [l.a] : []));
+
+/** 两个相邻地点之间的体力与耗时；不相邻返回 null */
+export const moveCost = (x: string, y: string): { stamina: number; minutes: number } | null => {
+  const l = linkBetween(x, y);
+  return l ? { stamina: l.stamina, minutes: l.minutes } : null;
+};
+
+/* ------------------------------------------------------------------ */
+/* 地点的可变状态                                                       */
+/* ------------------------------------------------------------------ */
+
+export const LOCATION_STATUSES = ['open', 'blocked'] as const;
+export type LocationStatus = (typeof LOCATION_STATUSES)[number];
+/** 封锁原因的长度上限（原因由事件给出，是展示文字） */
+export const LOCATION_REASON_MAX = 60;
+
+/** 初始时已经去过的地点：只有出生的山门 */
+export const INITIAL_VISITED: readonly LocationId[] = ['loc_qingyun_gate'];

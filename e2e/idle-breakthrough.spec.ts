@@ -142,13 +142,17 @@ test.describe('突破', () => {
     expect(await num(page, '晋级进度')).toBe(80);
     expect(await num(page, '气血')).toBe(80);
     await expect(page.locator('.chip', { hasText: '经验 −20%' })).toBeVisible();
-    await expect(page.locator('.entry .sub', { hasText: '冷却 24 小时' })).toBeVisible();
+    await expect(page.locator('.entry .sub', { hasText: '冷却 24 游戏小时' })).toBeVisible();
     await expect(btEntry(page)).toBeDisabled();
-    await expect(btEntry(page)).toContainText(/冷却剩余 23:59:\d\d/);
+    await expect(btEntry(page)).toContainText('冷却剩余 1 天'); // 24 游戏小时
 
     // 重新修炼满并等过冷却
     await server.setPlayer({ realmProgress: 100 });
-    await server.advance(24 * HOUR + MIN);
+    await server.advance(24 * HOUR); // 现实时间过去再久，游戏时间不动，冷却仍在
+    await page.reload();
+    await openActions(page);
+    await expect(btEntry(page)).toBeDisabled();
+    await server.advanceGame(24 * 60); // 游戏里过了 24 小时
     await page.reload();
     await openActions(page);
     await expect(btEntry(page)).toBeEnabled();

@@ -1,5 +1,5 @@
-import type { ActionResponse, ActionStatus, AuditEvent, InventoryItem, LogRecord, NpcMemory, NpcState, PlayerState, QuestState, QuestStatus, Relationship } from '@jhz/contracts';
-import type { MemoryEventKind, NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
+import type { ActionResponse, ActionStatus, AuditEvent, FactionChange, FactionHistory, FactionRelation, FactionState, PersonalEventRecord, InventoryItem, LocationState, LogRecord, NewsItem, WorldEventRecord, NpcMemory, NpcState, PlayerState, QuestState, QuestStatus, Relationship } from '@jhz/contracts';
+import type { FactionEffect, LocationStatus, MemoryEventKind, NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
 
 export interface CultivationJobRecord {
   id: string;
@@ -26,7 +26,7 @@ export interface StoredAction {
 }
 
 /** 玩家可见日志的内容（序号与时间由存档层在写入时赋予） */
-export type LogPayload = Omit<LogRecord, 'id' | 'at'>;
+export type LogPayload = Omit<LogRecord, 'id' | 'at' | 'gameMinutes'>;
 
 /** 一次改变了某条关系的审计事件（前后值来自事件的差异；before 为 null 表示此前没有这条关系） */
 export interface RelationChangeRecord {
@@ -65,6 +65,11 @@ export interface GameTx {
   /** 新建或更新（按 id） */
   saveJob(job: CultivationJobRecord): void;
 
+  /** 当前游戏时间（游戏分钟）。审计事件与玩家日志自动记录写入时刻的游戏时间 */
+  gameMinutes(): number;
+  /** 推进游戏时钟 minutes 个游戏分钟（整数，0..MAX_ADVANCE_MINUTES）；返回新时间。时间只增不减，非法参数 VALIDATION_FAILED */
+  advanceGameClock(minutes: number): number;
+
   /** 全部 NPC 的可变状态（显示文字来自静态定义） */
   npcs(): NpcState[];
   /** 全部关系；方向为 npcId → (targetType, targetId) */
@@ -74,6 +79,53 @@ export interface GameTx {
   /** 移动 NPC；NPC 或地点不存在抛 NOT_FOUND */
   moveNpc(npcId: string, locationId: string): NpcState;
   setNpcStatus(npcId: string, status: NpcStatus): NpcState;
+
+  /** 全部地点的可变状态（名字、地区、描述来自静态定义） */
+  locations(): LocationState[];
+  /** 设置地点状态：封锁必须有原因（≤60 字），开放不能有；地点不存在 NOT_FOUND，不合法 VALIDATION_FAILED */
+  setLocationStatus(id: string, status: LocationStatus, reason: string | null): LocationState;
+  /** 标记玩家去过这个地点（幂等）；地点不存在 NOT_FOUND */
+  visitLocation(id: string): LocationState;
+
+  /** 全部世界事件的可变状态（名字、时间表来自静态定义） */
+  worldEvents(): WorldEventRecord[];
+  /** 事件行不存在则按初始状态创建（正常情况下建库时已播种；注入自定义事件表的测试用） */
+  ensureWorldEvent(id: string): WorldEventRecord;
+  /** 更新事件：状态只能向前（scheduled → open → resolved | missed）；了结后不可再变；不合法 PRECONDITION_FAILED，事件不存在 NOT_FOUND */
+  updateWorldEvent(id: string, patch: Partial<Omit<WorldEventRecord, 'id'>>): WorldEventRecord;
+  /** 传闻/新闻，按产生顺序；limit 只取最近的若干条 */
+  news(limit?: number): NewsItem[];
+  /** 追加一条传闻或新闻：同一事件同一种类只能有一条（重复 CONFLICT）；事件不存在 NOT_FOUND */
+  addNews(input: { eventId: string; kind: NewsItem['kind']; text: string; gameMinutes: number; participated: boolean }): NewsItem;
+
+  /** 全部势力的可变状态（名字、简介来自静态定义） */
+  factions(): FactionState[];
+  /** 势力之间的关系（a < b） */
+  factionRelations(): FactionRelation[];
+  /**
+   * 应用一组势力影响（单次每项限幅 ±MAX_FACTION_DELTA 并夹回范围），返回实际发生的变化；
+   * 势力或关系不存在抛 NOT_FOUND
+   */
+  applyFactionEffects(effects: readonly FactionEffect[]): FactionChange[];
+  /** 势力历史，按发生顺序；limit 只取最近的若干条 */
+  factionHistory(limit?: number): FactionHistory[];
+  /** 记录一个事件造成的势力变化：每个事件只能记一次（重复 CONFLICT）；事件不存在 NOT_FOUND；changes 不能为空 */
+  addFactionHistory(input: { eventId: string; gameMinutes: number; text: string; changes: FactionChange[] }): FactionHistory;
+
+  /** 个人事件，按创建顺序；limit 只取最近的若干条 */
+  personalEvents(limit?: number): PersonalEventRecord[];
+  /** 进行中的个人事件 = 玩家「正忙」；没有返回 null */
+  activePersonalEvent(): PersonalEventRecord | null;
+  findPersonalByKey(idempotencyKey: string): PersonalEventRecord | null;
+  /** 新建进行中的个人事件；已有进行中的事件 CONFLICT，幂等键已用 CONFLICT */
+  createPersonalEvent(input: Pick<PersonalEventRecord, 'id' | 'idempotencyKey' | 'fingerprint' | 'intent' | 'proposal' | 'createdAtMinutes' | 'expiresAtMinutes' | 'chancePercent'>): PersonalEventRecord;
+  /** 了结进行中的个人事件（resolved / abandoned / expired）；不是进行中 PRECONDITION_FAILED，记录不自洽 VALIDATION_FAILED */
+  finishPersonalEvent(id: string, patch: Pick<PersonalEventRecord, 'state' | 'outcome' | 'roll' | 'resolvedAtMinutes' | 'lock'>): PersonalEventRecord;
+  /** 标记地点封锁已到期恢复（幂等） */
+  releasePersonalLock(id: string): PersonalEventRecord;
+
+  /** 传闻/新闻与势力历史的条数（审计快照用，比读出全部内容便宜） */
+  counts(): { news: number; factionHistory: number };
 
   /** 全部任务的可变状态（名字、步骤、奖励来自静态定义） */
   quests(): QuestState[];

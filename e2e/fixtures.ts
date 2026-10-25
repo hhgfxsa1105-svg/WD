@@ -24,6 +24,10 @@ export interface GameServer {
   /** 直接修改角色状态（用于构造「进度已满」等场景） */
   setPlayer(patch: Record<string, unknown>): Promise<void>;
   addItem(itemId: string, quantity: number): Promise<void>;
+  /** 把游戏时间向前推进（游戏分钟，单次最多 2880）；与现实时间无关 */
+  advanceGame(minutes: number): Promise<void>;
+  /** 设定地点开放/封锁（封锁需要原因） */
+  setLocation(id: string, status: 'open' | 'blocked', reason?: string): Promise<void>;
   /** 控制模拟 AI：让解析/叙事失败，或改每日调用上限 */
   setAi(opts: { parse?: 'ok' | 'fail'; narrate?: 'ok' | 'fail'; dailyLimit?: number }): Promise<void>;
   /** 优雅关闭并用同一份存档重新启动（端口不变） */
@@ -92,6 +96,8 @@ export const test = base.extend<{ server: GameServer; realOffline: boolean; aiOf
       setRng: (value) => post('rng', { value }),
       setPlayer: (patch) => post('player', patch),
       addItem: (itemId, quantity) => post('item', { itemId, quantity }),
+      advanceGame: (minutes) => post('game-clock', { minutes }),
+      setLocation: (id, status, reason) => post('location', { id, status, reason }),
       setAi: (opts) => post('ai', opts),
       restart: async () => {
         await stop();

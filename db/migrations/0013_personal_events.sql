@@ -1,0 +1,35 @@
+CREATE TABLE `personal_events` (
+	`id` text PRIMARY KEY NOT NULL,
+	`idempotency_key` text,
+	`fingerprint` text,
+	`state` text NOT NULL,
+	`intent` text NOT NULL,
+	`proposal_json` text NOT NULL,
+	`created_at_minutes` integer NOT NULL,
+	`expires_at_minutes` integer NOT NULL,
+	`chance_percent` integer NOT NULL,
+	`outcome` text,
+	`roll` real,
+	`resolved_at_minutes` integer,
+	`lock_location_id` text,
+	`lock_reason` text,
+	`lock_until_minutes` integer,
+	`lock_released` integer DEFAULT 0 NOT NULL,
+	`created_at` integer DEFAULT (unixepoch('subsec') * 1000) NOT NULL,
+	CONSTRAINT "personal_events_state_valid" CHECK("personal_events"."state" in ('active', 'resolved', 'abandoned', 'expired')),
+	CONSTRAINT "personal_events_outcome_valid" CHECK("personal_events"."outcome" is null or "personal_events"."outcome" in ('success', 'failure')),
+	CONSTRAINT "personal_events_outcome_iff_done" CHECK(("personal_events"."state" = 'active') = ("personal_events"."outcome" is null)),
+	CONSTRAINT "personal_events_roll_iff_resolved" CHECK(("personal_events"."state" = 'resolved') = ("personal_events"."roll" is not null)),
+	CONSTRAINT "personal_events_roll_range" CHECK("personal_events"."roll" is null or ("personal_events"."roll" >= 0 and "personal_events"."roll" < 100)),
+	CONSTRAINT "personal_events_resolved_time_iff_done" CHECK(("personal_events"."state" = 'active') = ("personal_events"."resolved_at_minutes" is null)),
+	CONSTRAINT "personal_events_unresolved_is_failure" CHECK("personal_events"."state" = 'resolved' or "personal_events"."outcome" is null or "personal_events"."outcome" = 'failure'),
+	CONSTRAINT "personal_events_chance_range" CHECK("personal_events"."chance_percent" between 0 and 100),
+	CONSTRAINT "personal_events_times" CHECK("personal_events"."created_at_minutes" >= 0 and "personal_events"."expires_at_minutes" >= "personal_events"."created_at_minutes"),
+	CONSTRAINT "personal_events_lock_consistent" CHECK(("personal_events"."lock_location_id" is null) = ("personal_events"."lock_until_minutes" is null) and ("personal_events"."lock_location_id" is null) = ("personal_events"."lock_reason" is null)),
+	CONSTRAINT "personal_events_lock_flag" CHECK("personal_events"."lock_released" in (0, 1)),
+	CONSTRAINT "personal_events_intent_len" CHECK(length("personal_events"."intent") between 1 and 80),
+	CONSTRAINT "personal_events_proposal_json" CHECK(json_valid("personal_events"."proposal_json"))
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `personal_events_key_unique` ON `personal_events` (`idempotency_key`);--> statement-breakpoint
+CREATE UNIQUE INDEX `personal_events_one_active` ON `personal_events` (`state`) WHERE "personal_events"."state" = 'active';

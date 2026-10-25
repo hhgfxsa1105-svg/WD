@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, foreignKey, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { check, foreignKey, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 const nowMs = sql`(unixepoch('subsec') * 1000)`;
 /** 与 @jhz/contracts 的 REALMS 保持一致（测试校验）；drizzle-kit 无法加载 TS 源码包，故此处内联 */
@@ -309,5 +309,207 @@ export const quests = sqliteTable(
     check('quests_accepted_rule', sql`(${t.acceptedAt} is null) = (${t.status} in ('locked', 'available'))`),
     check('quests_finished_rule', sql`(${t.finishedAt} is null) = (${t.status} not in ('completed', 'failed'))`),
     check('quests_claimed_rule', sql`${t.claimedAt} is null or ${t.status} = 'completed'`),
+  ],
+);
+
+/** 与 @jhz/contracts 的 LOCATION_STATUSES 保持一致（测试校验） */
+export const DB_LOCATION_STATUSES = ['open', 'blocked'] as const;
+const locationStatusList = sql.raw(DB_LOCATION_STATUSES.map((r) => `'${r}'`).join(', '));
+
+/** 与 @jhz/contracts 的 WORLD_EVENT_STATES 保持一致（测试校验） */
+export const DB_WORLD_EVENT_STATES = ['scheduled', 'open', 'resolved', 'missed'] as const;
+const eventStateList = sql.raw(DB_WORLD_EVENT_STATES.map((r) => `'${r}'`).join(', '));
+
+/**
+ * 世界事件的可变状态：每个静态事件一行（id 即事件定义 ID）。
+ * 约束：了结（resolved / missed）当且仅当有了结时间；参加过的事件必定是 resolved；布尔只能 0/1。
+ */
+export const worldEvents = sqliteTable(
+  'world_events',
+  {
+    id: text('id').primaryKey(),
+    state: text('state').notNull(),
+    rumored: integer('rumored').notNull().default(0),
+    participated: integer('participated').notNull().default(0),
+    resolvedAt: integer('resolved_at'),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    check('world_events_id_format', sql`${t.id} glob 'evt_*' and length(${t.id}) <= 48`),
+    check('world_events_state_valid', sql`${t.state} in (${eventStateList})`),
+    check('world_events_flags', sql`${t.rumored} in (0, 1) and ${t.participated} in (0, 1)`),
+    check('world_events_resolved_time', sql`(${t.state} in ('resolved', 'missed')) = (${t.resolvedAt} is not null)`),
+    check('world_events_resolved_time_nonneg', sql`${t.resolvedAt} is null or ${t.resolvedAt} >= 0`),
+    check('world_events_participated_resolved', sql`${t.participated} = 0 or ${t.state} = 'resolved'`),
+  ],
+);
+
+/**
+ * 传闻与新闻：每个事件的每种消息最多一条（唯一索引去重，重复调度写不进第二条）。
+ * seq 递增，保证展示顺序稳定。
+ */
+export const news = sqliteTable(
+  'news',
+  {
+    seq: integer('seq').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull(),
+    eventId: text('event_id').notNull(),
+    kind: text('kind').notNull(),
+    text: text('text').notNull(),
+    gameMinutes: integer('game_minutes').notNull(),
+    participated: integer('participated').notNull().default(0),
+    createdAt: integer('created_at').notNull().default(nowMs),
+  },
+  (t) => [
+    foreignKey({ columns: [t.eventId], foreignColumns: [worldEvents.id] }).onDelete('cascade'),
+    uniqueIndex('news_id_unique').on(t.id),
+    uniqueIndex('news_event_kind_unique').on(t.eventId, t.kind),
+    check('news_kind_valid', sql`${t.kind} in ('rumor', 'news')`),
+    check('news_text_len', sql`length(${t.text}) between 1 and 400`),
+    check('news_time_nonneg', sql`${t.gameMinutes} >= 0`),
+    check('news_participated_flag', sql`${t.participated} in (0, 1)`),
+  ],
+);
+
+/**
+ * 势力的可变状态：实力 0..100、对玩家的态度 −100..100。只能由程序定义的事件通过存档层小幅改动。
+ */
+export const factions = sqliteTable(
+  'factions',
+  {
+    id: text('id').primaryKey(),
+    strength: integer('strength').notNull(),
+    attitude: integer('attitude').notNull(),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    check('factions_id_format', sql`${t.id} glob 'fac_*' and length(${t.id}) <= 40`),
+    check('factions_strength_range', sql`${t.strength} between 0 and 100`),
+    check('factions_attitude_range', sql`${t.attitude} between -100 and 100`),
+  ],
+);
+
+/** 势力之间的关系：a < b 保证一对势力只有一行（双向共用一个数值） */
+export const factionRelations = sqliteTable(
+  'faction_relations',
+  {
+    a: text('a').notNull(),
+    b: text('b').notNull(),
+    value: integer('value').notNull(),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    primaryKey({ columns: [t.a, t.b] }),
+    foreignKey({ columns: [t.a], foreignColumns: [factions.id] }).onDelete('cascade'),
+    foreignKey({ columns: [t.b], foreignColumns: [factions.id] }).onDelete('cascade'),
+    check('faction_relations_order', sql`${t.a} < ${t.b}`),
+    check('faction_relations_range', sql`${t.value} between -100 and 100`),
+  ],
+);
+
+/** 势力历史：每个造成了势力变化的事件一条（事件唯一）；变化明细是前后值，可重放核对 */
+export const factionHistory = sqliteTable(
+  'faction_history',
+  {
+    seq: integer('seq').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull(),
+    eventId: text('event_id').notNull(),
+    gameMinutes: integer('game_minutes').notNull(),
+    text: text('text').notNull(),
+    changesJson: text('changes_json').notNull(),
+    createdAt: integer('created_at').notNull().default(nowMs),
+  },
+  (t) => [
+    foreignKey({ columns: [t.eventId], foreignColumns: [worldEvents.id] }).onDelete('cascade'),
+    uniqueIndex('faction_history_id_unique').on(t.id),
+    uniqueIndex('faction_history_event_unique').on(t.eventId),
+    check('faction_history_text_len', sql`length(${t.text}) between 1 and 400`),
+    check('faction_history_time_nonneg', sql`${t.gameMinutes} >= 0`),
+    check('faction_history_changes_json', sql`json_valid(${t.changesJson}) and json_type(${t.changesJson}) = 'array'`),
+  ],
+);
+
+/** 与 @jhz/contracts 的 PERSONAL_STATES 保持一致（测试校验） */
+export const DB_PERSONAL_STATES = ['active', 'resolved', 'abandoned', 'expired'] as const;
+const personalStateList = sql.raw(DB_PERSONAL_STATES.map((r) => `'${r}'`).join(', '));
+
+/**
+ * 个人事件（个人轨）：玩家自定义行为 → AI 提议 → 玩家进行或放弃。
+ * 约束：同一时间最多一个 active（唯一部分索引 = 玩家「正忙」）；
+ * 进行中没有结果，其余必须有；只有 resolved 有掷点；放弃 / 作废只能是失败；幂等键唯一。
+ */
+export const personalEvents = sqliteTable(
+  'personal_events',
+  {
+    id: text('id').primaryKey(),
+    idempotencyKey: text('idempotency_key'),
+    fingerprint: text('fingerprint'),
+    state: text('state').notNull(),
+    intent: text('intent').notNull(),
+    proposalJson: text('proposal_json').notNull(),
+    createdAtMinutes: integer('created_at_minutes').notNull(),
+    expiresAtMinutes: integer('expires_at_minutes').notNull(),
+    chancePercent: integer('chance_percent').notNull(),
+    outcome: text('outcome'),
+    roll: real('roll'),
+    resolvedAtMinutes: integer('resolved_at_minutes'),
+    lockLocationId: text('lock_location_id'),
+    lockReason: text('lock_reason'),
+    lockUntilMinutes: integer('lock_until_minutes'),
+    lockReleased: integer('lock_released').notNull().default(0),
+    createdAt: integer('created_at').notNull().default(nowMs),
+  },
+  (t) => [
+    uniqueIndex('personal_events_key_unique').on(t.idempotencyKey),
+    uniqueIndex('personal_events_one_active').on(t.state).where(sql`${t.state} = 'active'`),
+    check('personal_events_state_valid', sql`${t.state} in (${personalStateList})`),
+    check('personal_events_outcome_valid', sql`${t.outcome} is null or ${t.outcome} in ('success', 'failure')`),
+    check('personal_events_outcome_iff_done', sql`(${t.state} = 'active') = (${t.outcome} is null)`),
+    check('personal_events_roll_iff_resolved', sql`(${t.state} = 'resolved') = (${t.roll} is not null)`),
+    check('personal_events_roll_range', sql`${t.roll} is null or (${t.roll} >= 0 and ${t.roll} < 100)`),
+    check('personal_events_resolved_time_iff_done', sql`(${t.state} = 'active') = (${t.resolvedAtMinutes} is null)`),
+    check('personal_events_unresolved_is_failure', sql`${t.state} = 'resolved' or ${t.outcome} is null or ${t.outcome} = 'failure'`),
+    check('personal_events_chance_range', sql`${t.chancePercent} between 0 and 100`),
+    check('personal_events_times', sql`${t.createdAtMinutes} >= 0 and ${t.expiresAtMinutes} >= ${t.createdAtMinutes}`),
+    check('personal_events_lock_consistent', sql`(${t.lockLocationId} is null) = (${t.lockUntilMinutes} is null) and (${t.lockLocationId} is null) = (${t.lockReason} is null)`),
+    check('personal_events_lock_flag', sql`${t.lockReleased} in (0, 1)`),
+    check('personal_events_intent_len', sql`length(${t.intent}) between 1 and 80`),
+    check('personal_events_proposal_json', sql`json_valid(${t.proposalJson})`),
+  ],
+);
+
+/**
+ * 游戏时钟：单行（id = 'main'），整数游戏分钟，只增不减（单调性由存档层的 advance 保证，
+ * 这里的约束只兜底非负）。与 world_clock（现实时间高水位）无关。
+ */
+export const gameClock = sqliteTable(
+  'game_clock',
+  {
+    id: text('id').primaryKey(),
+    minutes: integer('minutes').notNull(),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [check('game_clock_single', sql`${t.id} = 'main'`), check('game_clock_nonneg', sql`${t.minutes} >= 0`)],
+);
+
+/**
+ * 地点的可变状态（权威存档）。名字、地区、描述来自静态定义。
+ * 约束：封锁当且仅当有原因（原因 ≤60 字）；visited 只能是 0/1。
+ */
+export const locations = sqliteTable(
+  'locations',
+  {
+    id: text('id').primaryKey(),
+    status: text('status').notNull(),
+    reason: text('reason'),
+    visited: integer('visited').notNull().default(0),
+    updatedAt: integer('updated_at').notNull().default(nowMs),
+  },
+  (t) => [
+    check('locations_id_format', sql`${t.id} glob 'loc_*' and length(${t.id}) <= 64`),
+    check('locations_status_valid', sql`${t.status} in (${locationStatusList})`),
+    check('locations_reason_rule', sql`(${t.status} = 'blocked') = (${t.reason} is not null)`),
+    check('locations_reason_len', sql`${t.reason} is null or length(${t.reason}) between 1 and 60`),
+    check('locations_visited_flag', sql`${t.visited} in (0, 1)`),
   ],
 );

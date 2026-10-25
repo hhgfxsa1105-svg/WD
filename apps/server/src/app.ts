@@ -6,6 +6,7 @@ import type { HealthResponse } from '@jhz/contracts';
 import { createFreeActionService } from './modules/action/free.js';
 import { createActionService } from './modules/action/service.js';
 import { createGatewayFromConfig, loadAiConfig, type AiGateway } from './modules/ai/index.js';
+import { createPersonalService } from './modules/personal/service.js';
 import { createNarrator } from './modules/narrative/service.js';
 import { OFF_NARRATE, type NarrateConfig } from './modules/narrative/config.js';
 import { createCultivationService, type OfflinePolicy } from './modules/cultivation/service.js';
@@ -54,6 +55,7 @@ export async function buildApp({
   const narrator = createNarrator({ store, ai, clock, config: { ...OFF_NARRATE, ...narrate } });
   const actions = createActionService({ store, clock, rng, narratable: narrator.wants });
   const cultivation = createCultivationService({ store, clock, offline });
+  const personal = createPersonalService({ store, ai, clock, rng });
   registerGameRoutes(app, {
     store,
     actions,
@@ -62,7 +64,8 @@ export async function buildApp({
     clockBehindMs,
     ai,
     narrator,
-    free: createFreeActionService({ store, actions, cultivation, ai, clock, narrator }),
+    free: createFreeActionService({ store, actions, cultivation, ai, clock, narrator, personal }),
+    personal,
   });
 
 

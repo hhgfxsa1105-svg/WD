@@ -3,6 +3,11 @@ import {
   AiStatusResponseSchema,
   GreetResponseSchema,
   NpcListResponseSchema,
+  WorldMapResponseSchema,
+  WorldEventsResponseSchema,
+  PersonalListResponseSchema,
+  PersonalResolveResponseSchema,
+  JoinEventResponseSchema,
   NpcMemoryListResponseSchema,
   QuestListResponseSchema,
   RelationExplainResponseSchema,
@@ -17,6 +22,11 @@ import {
   type GreetResponse,
   type NpcMemory,
   type NpcView,
+  type WorldMapResponse,
+  type WorldEventView,
+  type PersonalListResponse,
+  type PersonalResolveResponse,
+  type JoinEventResponse,
   type QuestOp,
   type QuestView,
   type RelationExplainResponse,
@@ -110,6 +120,18 @@ export const submitQuestOp = (questId: string, op: QuestOp, idempotencyKey = new
   submit({ kind: 'quest', idempotencyKey, questId, op });
 
 export const fetchQuests = async (): Promise<QuestView[]> => (await request('/api/v1/quests', QuestListResponseSchema)).quests;
+export const fetchPersonal = (): Promise<PersonalListResponse> => request('/api/v1/world/personal', PersonalListResponseSchema);
+
+export const resolvePersonal = (id: string): Promise<PersonalResolveResponse> => postJson(`/api/v1/world/personal/${encodeURIComponent(id)}/resolve`, PersonalResolveResponseSchema);
+
+export const abandonPersonal = (id: string): Promise<PersonalResolveResponse> => postJson(`/api/v1/world/personal/${encodeURIComponent(id)}/abandon`, PersonalResolveResponseSchema);
+
+export const fetchEvents = async (): Promise<WorldEventView[]> => (await request('/api/v1/world/events', WorldEventsResponseSchema)).events;
+
+export const joinWorldEvent = (eventId: string): Promise<JoinEventResponse> => postJson(`/api/v1/world/events/${encodeURIComponent(eventId)}/join`, JoinEventResponseSchema);
+
+export const fetchMap = (): Promise<WorldMapResponse> => request('/api/v1/world/map', WorldMapResponseSchema);
+
 export const fetchNpcs = async (): Promise<NpcView[]> => (await request('/api/v1/world/npcs', NpcListResponseSchema)).npcs;
 
 /** 对话上下文用的精选记忆（条数与字数受限） */

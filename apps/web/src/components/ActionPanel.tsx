@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { RULES } from '@jhz/game-rules';
-import type { ActionResponse, CultivationJob, PlayerState, WorldTimeResponse } from '@jhz/contracts';
+import type { ActionResponse, CultivationJob, PersonalEventView, PlayerState, WorldTimeResponse } from '@jhz/contracts';
+import { DIFFICULTY_LABEL, TIER_LABEL } from '@jhz/game-rules';
 import { FREE_HINTS, SLOW_MS, type AiView } from '../ai';
 import type { AiReply } from '../useGame';
 import { breakthroughView } from '../breakthrough';
@@ -28,11 +29,14 @@ interface Props {
   aiReply: AiReply | null;
   /** 提交自由行动；返回服务端结果，失败返回 null */
   onFree: (input: string) => Promise<ActionResponse | null>;
+  /** 进行中的个人事件（玩家正忙） */
+  personal: PersonalEventView | null;
+  onPersonal: (id: string, op: 'resolve' | 'abandon') => void;
 }
 
 export function ActionPanel(p: Props) {
   const now = useNow(p.serverOffset);
-  const bt = breakthroughView(p.player, now);
+  const bt = breakthroughView(p.player, p.world?.game.minutes ?? 0);
   const canCultivate = p.player.stamina >= RULES.cultivate.staminaCost;
   const preview = p.job ? idlePreview(p.player, p.job, now) : null;
   const full = p.player.realmProgress >= 100;
@@ -51,8 +55,35 @@ export function ActionPanel(p: Props) {
     if (r?.ai?.executed) setText(''); // 已执行才清空；澄清、失败时保留，方便改几个字重发
   };
 
+  const pe = p.personal;
   return (
     <>
+      {pe && (
+        <section className="sec" aria-label="正在进行的事">
+          <h4>
+            眼下的事<small>{pe.expiresAt.label} 前处理</small>
+          </h4>
+          <div className="row">
+            <div className="info">
+              <strong>{pe.title}</strong>
+              <small>
+                {pe.intro}
+                <br />
+                {TIER_LABEL[pe.tier]} · {DIFFICULTY_LABEL[pe.difficulty]} · 约 {pe.minutes} 分钟 · 体力 {pe.staminaCost} · 成功率约 {pe.chancePercent}%
+              </small>
+            </div>
+          </div>
+          <div className="row">
+            <button className="btn primary" type="button" disabled={p.busy || p.player.stamina < pe.staminaCost} onClick={() => p.onPersonal(pe.id, 'resolve')} aria-label={`进行${pe.title}`}>
+              进行
+            </button>
+            <button className="btn" type="button" disabled={p.busy} onClick={() => p.onPersonal(pe.id, 'abandon')} aria-label={`放弃${pe.title}`}>
+              放弃
+            </button>
+          </div>
+          {p.player.stamina < pe.staminaCost && <p className="soon">体力不足，先休息一下。</p>}
+        </section>
+      )}
       <section className="sec" aria-label="自由行动">
         <h4>
           自由行动<small>{text.length}/200</small>

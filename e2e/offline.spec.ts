@@ -47,7 +47,7 @@ test.describe('离线收益（真实离线策略）', () => {
   test('放置修炼区显示离线规则', async ({ page, server }) => {
     await load(page, server.url);
     await openActions(page);
-    await expect(page.getByLabel('离线规则')).toHaveText('离线最多计入 12 小时，按 50% 效率');
+    await expect(page.getByLabel('离线规则')).toHaveText('离线最多计入 12 小时，按 50% 效率；离线 1 小时 = 游戏 1 时辰');
   });
 
   test('在线（每次接触都会刷新）：分两段各 3 分钟领取，全额且不带离线说明', async ({ page, server }) => {
@@ -83,7 +83,7 @@ test.describe('系统时间异常', () => {
     await expect(page.getByRole('alert').filter({ hasText: '系统时间早于游戏时间' })).toBeVisible();
   });
 
-  test('系统时间被调到过去也不能跳过突破冷却', async ({ page, server }) => {
+  test('突破冷却只看游戏时间：现实时间被调早或过去很久都不改变冷却', async ({ page, server }) => {
     await server.setPlayer({ realmProgress: 100 });
     await server.setRng(0.9999);
     await load(page, server.url);
@@ -92,7 +92,8 @@ test.describe('系统时间异常', () => {
     await page.getByRole('button', { name: '确认突破' }).click();
     await expect(page.locator('.chip', { hasText: '经验 −20%' })).toBeVisible();
 
-    await server.advance(-48 * HOUR); // 试图靠调早时间让冷却失效
+    await server.advance(-48 * HOUR); // 现实时间被调早
+    await server.advance(72 * HOUR); // 再过去三天
     await server.setPlayer({ realmProgress: 100 });
     await page.reload();
     await openActions(page);

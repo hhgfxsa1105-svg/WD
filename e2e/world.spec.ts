@@ -30,6 +30,54 @@ const go = async (page: Page, place: string) => {
   await expect(where(page)).toContainText(place);
 };
 
+test.describe('系统事件：传闻 → 开始 → 到场参加', () => {
+  test('风声出现在日志里；开始后地图里能看到并要到场才能参加；参加后得到奖励且事件从列表消失', async ({ page, server }) => {
+    await load(page, server.url);
+    await server.advanceGame(1800 - 420); // 第 2 天 06:00，晨课 07:00 开始
+    await page.reload();
+    await expect(page.locator('.card')).toBeVisible();
+    await expect(entries(page).filter({ hasText: '明早练功场有晨课' })).toHaveCount(1);
+    await expect(entries(page).filter({ hasText: '明早练功场有晨课' }).locator('.sub')).toHaveText('传闻');
+
+    await openMap(page);
+    const live = sheet(page).getByLabel('眼下的事');
+    await expect(live).toContainText('风声');
+    await expect(live.getByRole('button', { name: /^参加/ })).toHaveCount(0); // 还没开始
+    await page.keyboard.press('Escape');
+
+    await server.advanceGame(60); // 07:00 开始
+    await page.reload();
+    await expect(page.locator('.card')).toBeVisible();
+    await openMap(page);
+    await expect(live).toContainText('练功场晨课');
+    await expect(live.getByRole('button', { name: '参加练功场晨课' })).toBeDisabled();
+    await expect(live).toContainText('你不在现场');
+
+    await sheet(page).getByRole('button', { name: '前往青云山 · 练功场' }).click();
+    await expect(where(page)).toContainText('练功场');
+    await expect(live.getByRole('button', { name: '参加练功场晨课' })).toBeEnabled();
+    await live.getByRole('button', { name: '参加练功场晨课' }).click();
+    await expect(entries(page).filter({ hasText: '一套入门剑法' })).toHaveCount(1);
+    await expect(entries(page).filter({ hasText: '一套入门剑法' }).locator('.chip')).toContainText('经验 +4%');
+    await expect(sheet(page).getByLabel('眼下的事')).toHaveCount(0); // 已了结，不再列出
+  });
+
+  test('错过窗口：规则自行了结，日志里是新闻；藏经阁被封锁并写明原因', async ({ page, server }) => {
+    await load(page, server.url);
+    await server.advanceGame(2200 - 420); // 第 2 天 12:40：晨课已过、藏经阁已封
+    await page.reload();
+    await expect(page.locator('.card')).toBeVisible();
+    await expect(entries(page).filter({ hasText: '晨课照常举行' }).locator('.sub')).toHaveText('新闻');
+    await expect(entries(page).filter({ hasText: '闭门整修' })).toHaveCount(1);
+    await openMap(page);
+    await sheet(page).getByRole('button', { name: '前往青云山 · 练功场' }).click();
+    await expect(where(page)).toContainText('练功场');
+    const row = sheet(page).locator('.w-row', { has: page.getByRole('button', { name: '前往青云山 · 藏经阁' }) });
+    await expect(row.getByRole('button')).toBeDisabled();
+    await expect(row).toContainText('过不去：整修中，暂不开放');
+  });
+});
+
 test.describe('地图与移动', () => {
   test('列出相邻地点与在场的人；前往后位置与体力更新，日志有记录，地图随之变化', async ({ page, server }) => {
     await load(page, server.url);
@@ -39,7 +87,7 @@ test.describe('地图与移动', () => {
     await expect(sheet(page).getByRole('button', { name: '查看赵铁牛' })).toContainText('守门弟子');
     await sheet(page).getByRole('button', { name: '前往青云山 · 练功场' }).click();
     await expect(where(page)).toContainText('练功场');
-    await expect(entries(page).last()).toContainText('来到青云山 · 练功场');
+    await expect(entries(page).last()).toContainText('前往青云山 · 练功场');
     await expect(entries(page).last().locator('.chip')).toContainText('体力 −3');
     // 地图刷新：现在能去山门、大殿、藏经阁，这里是大师姐
     await expect(sheet(page).getByRole('button', { name: /前往青云山 · (山门|大殿|藏经阁)/ })).toHaveCount(3);
@@ -51,8 +99,39 @@ test.describe('地图与移动', () => {
     await server.setPlayer({ stamina: 2 });
     await load(page, server.url);
     await nav(page, '地图');
-    await expect(sheet(page).getByRole('button', { name: /^前往/ })).toBeDisabled();
+    for (const b of await sheet(page).getByRole('button', { name: /^前往/ }).all()) await expect(b).toBeDisabled();
     await expect(sheet(page)).toContainText('体力不足，先休息一下再赶路');
+  });
+
+  test('山下：山门可去山道，山道通小镇；每条路的体力与耗时由服务端给出', async ({ page, server }) => {
+    await load(page, server.url);
+    await nav(page, '地图');
+    const row = (name: string) => sheet(page).locator('.w-row', { has: page.getByRole('button', { name: `前往${name}` }) });
+    await expect(row('青云山 · 练功场')).toContainText('约 30 分钟');
+    await expect(row('山下 · 山道')).toContainText('体力 −3');
+    await expect(row('山下 · 山道')).toContainText('约 60 分钟');
+    await expect(row('山下 · 山道')).toContainText('没去过');
+    await sheet(page).getByRole('button', { name: '前往山下 · 山道' }).click();
+    await expect(where(page)).toContainText('山道');
+    await expect(sheet(page).getByRole('button', { name: '前往山下 · 小镇' })).toBeEnabled();
+    await sheet(page).getByRole('button', { name: '前往山下 · 小镇' }).click();
+    await expect(where(page)).toContainText('小镇');
+    // 回头：山道已经去过，不再标「没去过」
+    await expect(sheet(page).locator('.w-row', { has: page.getByRole('button', { name: '前往山下 · 山道' }) })).not.toContainText('没去过');
+  });
+
+  test('地点被封锁：「前往」置灰并显示原因；解除后恢复', async ({ page, server }) => {
+    await server.setLocation('loc_foot_path', 'blocked', '山道塌方');
+    await load(page, server.url);
+    await nav(page, '地图');
+    const row = sheet(page).locator('.w-row', { has: page.getByRole('button', { name: '前往山下 · 山道' }) });
+    await expect(row.getByRole('button')).toBeDisabled();
+    await expect(row).toContainText('过不去：山道塌方');
+    await expect(sheet(page).getByRole('button', { name: '前往青云山 · 练功场' })).toBeEnabled(); // 其他路不受影响
+    await server.setLocation('loc_foot_path', 'open');
+    await load(page, server.url);
+    await nav(page, '地图');
+    await expect(sheet(page).getByRole('button', { name: '前往山下 · 山道' })).toBeEnabled();
   });
 
   test('用自由输入说「去练功场」；说「去大殿」被服务端拒绝并说明原因', async ({ page, server }) => {

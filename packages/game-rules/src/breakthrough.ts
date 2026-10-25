@@ -63,7 +63,8 @@ const nonZero = (c: StateChange[]) => c.filter((x) => x.delta !== 0);
  */
 export function resolveBreakthrough(
   player: PlayerState,
-  opts: { now: number; rng: Rng; pillGrade?: Grade | null },
+  /** now：当前游戏分钟；elapsed：这次尝试本身耗时（游戏分钟），失败冷却从尝试结束时起算 */
+  opts: { now: number; rng: Rng; pillGrade?: Grade | null; elapsed?: number },
 ): BreakthroughResolution {
   const target = nextRealm(player.realm);
   if (!target) return { ok: false, code: 'MAX_REALM', message: '你已臻陆地神仙，再无更高境界' };
@@ -120,7 +121,7 @@ export function resolveBreakthrough(
     outcome: 'failure',
     chancePercent: chance.percent,
     roll,
-    player: { ...player, realmProgress: progress, hp, breakthroughAvailableAt: opts.now + BREAKTHROUGH_RULES.cooldownMs },
+    player: { ...player, realmProgress: progress, hp, breakthroughAvailableAt: opts.now + (opts.elapsed ?? 0) + BREAKTHROUGH_RULES.cooldownMinutes },
     changes: nonZero([
       { stat: 'realmProgress', delta: progress - player.realmProgress },
       { stat: 'hp', delta: hp - player.hp },

@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { CultivationResponseSchema, type CultivationResponse, type StateChange } from '@jhz/contracts';
-import { DEFAULT_METHOD_ID, IDLE_CULTIVATION, OFFLINE, settleIdleCultivation } from '@jhz/game-rules';
+import { DEFAULT_METHOD_ID, IDLE_CULTIVATION, OFFLINE, idleGameMinutes, settleIdleCultivation } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
 import { advanceQuests } from '../quest/service.js';
+import { tickWorld } from '../world-events/service.js';
 import type { Clock } from '../../shared/runtime.js';
 import type { CultivationJobRecord, GameStore, GameTx, LogPayload } from '../store/types.js';
 
@@ -70,6 +71,10 @@ export function createCultivationService({ store, clock, offline }: CultivationD
     const next: CultivationJobRecord = { ...job, lastSettledAt, lastCheckedAt: Math.max(job.lastCheckedAt, now) };
 
     if (result && result.changes.length > 0) tx.savePlayer(result.player);
+    // 游戏时间：在线挂机不推进（玩家就在眼前，时间只随行动走）；
+    // 回来发现离线了，才把这段离线时间一次性折算（超出上限的部分作废），修炼圆满则只计到圆满为止。
+    const clockTicks = isOffline ? (result?.completed ? result.ticksUsed : ticks) : 0;
+    if (clockTicks > 0) tx.advanceGameClock(idleGameMinutes(clockTicks, IDLE_CULTIVATION.gameMinutesPerTick));
     const info: OfflineInfo | null = isOffline
       ? { gapMs: gap, countedMs: counted, capped: sinceSettled > counted, efficiencyPercent: Math.round(efficiency * 100) }
       : null;
@@ -122,6 +127,7 @@ export function createCultivationService({ store, clock, offline }: CultivationD
       const diff = stateDiff(before, snapshot(tx));
       const payload = logOf(settled);
       const log = diff || payload ? tx.appendEvent({ actionId: null, eventType, before: diff?.before ?? null, after: diff?.after ?? null, at: now, log: payload }) : null;
+      tickWorld(tx, { at: now, actionId: null }); // 离线折算的时间里到期的世界事件在这里发生
       advanceQuests(tx, now, null); // 修炼进度变化可能让任务条件成立
       return respond(tx, settled, now, log);
     });

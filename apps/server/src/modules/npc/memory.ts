@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { LogRecord, Realm } from '@jhz/contracts';
-import { MEMORY_EVENTS, NPC_DEFS, applyRelationDelta, isNpcId, memorySummary, type MemoryEventKind } from '@jhz/game-rules';
+import { ACTION_MINUTES, MEMORY_EVENTS, NPC_DEFS, applyRelationDelta, isNpcId, memorySummary, type MemoryEventKind } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
 import { advanceQuests } from '../quest/service.js';
+import { tickWorld } from '../world-events/service.js';
 import type { GameStore, GameTx } from '../store/types.js';
 
 const PLAYER = { type: 'player' as const, id: 'player_1' };
@@ -63,18 +64,21 @@ export function meetNpc(store: GameStore, npcId: string, at: number): MeetResult
     if (tx.memories(npcId).some((m) => m.type === 'met')) return { firstMeeting: false };
 
     const d = NPC_DEFS[npcId];
+    const clockFrom = tx.gameMinutes();
+    const clockTo = tx.advanceGameClock(ACTION_MINUTES.greet);
     const narrative = `你走到${d.name}（${d.role}）面前，拱手见礼，两人就此相识。`;
     const eventId = randomUUID();
     const log = tx.appendEvent({
       id: eventId,
       actionId: null,
       eventType: 'npc.met',
-      before: null,
-      after: null,
+      before: { gameMinutes: clockFrom },
+      after: { gameMinutes: clockTo },
       at,
       log: { type: 'system', narrative, changes: [], breakthrough: null, idle: null, note: null },
     });
     recordNpcMemories(tx, { sourceEventId: eventId, actionId: null, at, entries: [{ npcId, kind: 'met' }] });
+    tickWorld(tx, { at, actionId: null }); // 耗时 10 分钟，到期的世界事件在这里发生
     advanceQuests(tx, at, null); // 相识可能让任务条件成立
     return { firstMeeting: true, log: log!, narrative };
   });

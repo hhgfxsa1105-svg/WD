@@ -12,6 +12,7 @@ import { loadAiConfig } from '../apps/server/src/modules/ai/config.js';
 import { createAiGateway } from '../apps/server/src/modules/ai/gateway.js';
 import { createKeywordMockProvider } from '../apps/server/src/modules/ai/mock.js';
 import { AiError, type AiProvider } from '../apps/server/src/modules/ai/types.js';
+import { tickWorld } from '../apps/server/src/modules/world-events/service.js';
 import { WorldClock } from '../apps/server/src/shared/world-clock.js';
 
 const env = loadEnv();
@@ -64,6 +65,16 @@ app.post('/__test/player', async (req) => {
   const patch = req.body as Record<string, unknown>;
   const next = store.transact((tx) => tx.savePlayer(PlayerStateSchema.parse({ ...tx.player(), ...patch })));
   return { version: next.version };
+});
+app.post('/__test/game-clock', async (req) => {
+  const { minutes } = req.body as { minutes: number };
+  // 与真实流程一致：时间推进之后，到期的世界事件随即发生
+  return { minutes: store.transact((tx) => { const m = tx.advanceGameClock(minutes); tickWorld(tx, { at: Date.now(), actionId: null }); return m; }) };
+});
+app.post('/__test/location', async (req) => {
+  const { id, status, reason } = req.body as { id: string; status: 'open' | 'blocked'; reason?: string };
+  store.transact((tx) => tx.setLocationStatus(id, status, reason ?? null));
+  return { ok: true };
 });
 app.post('/__test/item', async (req) => {
   const { itemId, quantity } = req.body as { itemId: string; quantity: number };

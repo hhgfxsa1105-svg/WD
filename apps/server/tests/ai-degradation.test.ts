@@ -258,7 +258,7 @@ describe('恶意与畸形的模型输出（两条链路）', () => {
 
 describe('AI 契约快照（改动契约时这里会报警）', () => {
   it('方案动作类型、风险标签、字段上限', () => {
-    expect([...AI_ACTION_TYPES]).toEqual(['cultivate', 'rest', 'breakthrough', 'start_idle', 'stop_idle', 'check_status', 'talk', 'travel', 'other']);
+    expect([...AI_ACTION_TYPES]).toEqual(['cultivate', 'rest', 'breakthrough', 'start_idle', 'stop_idle', 'check_status', 'talk', 'travel', 'custom', 'other']);
     expect([...AI_RISK_TAGS]).toEqual(['reputation', 'injury', 'cost', 'time']);
     expect(AI_LIMITS).toMatchObject({ rawMax: 8000, intentMax: 80, contextMax: 120 });
     expect(LIMITS.freeInput).toEqual({ min: 1, max: 200 });

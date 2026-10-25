@@ -12,6 +12,22 @@ test.beforeEach(async ({ page, server }) => {
   await expect(page.locator('.card')).toBeVisible();
 });
 
+test('游戏时间：起点第 1 天辰时；行动推进（修炼 1 小时、休息 2 小时），日志带时辰；刷新后保持', async ({ page }) => {
+  const clock = page.locator('.loc > span');
+  await expect(clock).toContainText('第 1 天 · 辰时');
+  await openActions(page);
+  await cultivate(page).click(); // 07:00 → 08:00，仍是辰时
+  await expect(page.locator('.entry').last().locator('time')).toHaveText('辰时');
+  await expect(clock).toContainText('第 1 天 · 辰时');
+  await rest(page).click(); // → 10:00，巳时
+  await expect(clock).toContainText('第 1 天 · 巳时');
+  await expect(page.locator('.entry').last().locator('time')).toHaveText('巳时');
+  await expect(page.locator('.entry').last().locator('time')).toHaveAttribute('title', '第 1 天 · 巳时');
+  await page.reload();
+  await expect(page.locator('.card')).toBeVisible();
+  await expect(clock).toContainText('第 1 天 · 巳时');
+});
+
 test('首页展示角色：炼体无内力、六维、三种货币', async ({ page }) => {
   await expect(page.getByRole('button', { name: '林惊鸿' })).toBeVisible();
   await expect(page.locator('.realm')).toHaveText('炼体');

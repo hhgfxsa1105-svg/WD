@@ -11,5 +11,5 @@ export function offlineSummary(o: Offline): string {
 
 /** 离线规则的一句话说明，用于放置修炼区 */
 export function offlineRuleText(capMs: number, efficiencyPercent: number): string {
-  return `离线最多计入 ${formatDuration(capMs)}，按 ${efficiencyPercent}% 效率`;
+  return `离线最多计入 ${formatDuration(capMs)}，按 ${efficiencyPercent}% 效率；离线 1 小时 = 游戏 1 时辰`;
 }

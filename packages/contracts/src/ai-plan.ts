@@ -16,6 +16,7 @@ export const AI_ACTION_TYPES = [
   'check_status', // 查看状态
   'talk', // 与人交谈（第一次见面会留下记忆）
   'travel', // 前往相邻地点（目标为地点；相邻与体力由服务端判定）
+  'custom', // 预设之外的自定义行为（进入个人轨：AI 只能提议个人事件，成败由服务端判定）
   'other', // 无法归类或暂不支持，进入澄清
 ] as const;
 export const AiActionTypeSchema = z.enum(AI_ACTION_TYPES);

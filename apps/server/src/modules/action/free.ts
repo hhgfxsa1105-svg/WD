@@ -10,33 +10,20 @@ import {
 import { NPC_DEFS, checkPlanTarget, isNpcId, locationName, parseAiPlan, pillGradeOf } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import { AiError, type AiGateway } from '../ai/index.js';
+import { friendlyAiMessage } from '../ai/friendly.js';
 import { buildParseMessages, sanitizePlayerInput } from '../ai/prompt.js';
 import type { CultivationService } from '../cultivation/service.js';
 import { meetNpc } from '../npc/memory.js';
 import type { Clock } from '../../shared/runtime.js';
 import type { Narrator } from '../narrative/service.js';
 import type { GameStore, GameTx } from '../store/types.js';
+import type { PersonalService } from '../personal/service.js';
 import type { ActionService } from './service.js';
 
 type FreeReq = Extract<SubmitActionRequest, { kind: 'free' }>;
 type AiInfo = NonNullable<ActionResponse['ai']>;
 
-/** 给玩家看的 AI 不可用提示；原始错误细节只留在服务端记录里 */
-export function friendlyAiMessage(kind: AiError['kind']): string {
-  switch (kind) {
-    case 'DISABLED':
-      return 'AI 功能未开启，请使用固定选项。';
-    case 'BUDGET_EXCEEDED':
-      return '今天的 AI 次数用完了，请使用固定选项，明天再来。';
-    case 'INPUT_TOO_LARGE':
-      return '这句话太长了，请精简后再试。';
-    case 'AUTH':
-    case 'BAD_REQUEST':
-      return 'AI 服务的设置有问题，请检查配置，或使用固定选项。';
-    default:
-      return 'AI 暂时无法响应，请稍后再试，或使用固定选项。';
-  }
-}
+export { friendlyAiMessage } from '../ai/friendly.js';
 
 const digest = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 24);
 
@@ -70,6 +57,8 @@ export interface FreeDeps {
   clock: Clock;
   /** 叙事与结算分离：结算提交后才尝试 AI 叙事；未提供则不叙事 */
   narrator?: Narrator;
+  /** 个人轨：自定义行为 → AI 提议个人事件 */
+  personal?: PersonalService;
 }
 
 /**
@@ -77,7 +66,7 @@ export interface FreeDeps {
  * 由服务端按**当前状态**重新判定（体力、进度、冷却、库存……），AI 无法绕过任何规则。
  * 复用固定行动的事务、幂等、审计与日志；幂等重放不会再次调用 AI。
  */
-export function createFreeActionService({ store, actions, cultivation, ai, clock, narrator }: FreeDeps) {
+export function createFreeActionService({ store, actions, cultivation, ai, clock, narrator, personal }: FreeDeps) {
   /** 同一幂等键的并发请求合并为一次 AI 调用 */
   const inflight = new Map<string, Promise<ActionResponse>>();
 
@@ -158,6 +147,12 @@ export function createFreeActionService({ store, actions, cultivation, ai, clock
         };
         return settle(actions.executeFresh(base, { fingerprint, ai: info(true), eventType: 'action.free.breakthrough', preCheck }));
       }
+      case 'custom': {
+        // 预设之外的自定义行为：进入个人轨。AI 只能提议个人事件，成败由服务端判定；这里先开出事件，玩家再选「进行」或「放弃」
+        if (!personal) return clarify('这类行为暂时还不能做，请使用固定选项。', plan.intent, plan.action_type);
+        const proposed = await personal.propose({ idempotencyKey: req.idempotencyKey, fingerprint, intent: plan.intent });
+        return proposed ?? clarify('这件事一时想不出怎么展开，换个说法试试？', plan.intent, plan.action_type);
+      }
       default:
         if (plan.action_type === 'talk') {
           const targetId = plan.target?.type === 'npc' ? plan.target.id : null;
@@ -176,7 +171,7 @@ export function createFreeActionService({ store, actions, cultivation, ai, clock
   async function submit(req: FreeReq): Promise<ActionResponse> {
     const fingerprint = `free:${digest(sanitizePlayerInput(req.input))}`;
     // 幂等：已有记录就直接回放，**不再调用 AI**；同键异输入返回 409
-    const replay = actions.findReplay(req.idempotencyKey, fingerprint);
+    const replay = actions.findReplay(req.idempotencyKey, fingerprint) ?? personal?.replay(req.idempotencyKey, fingerprint) ?? null;
     if (replay) return replay;
 
     const flightKey = `${req.idempotencyKey}|${fingerprint}`;

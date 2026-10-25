@@ -1,0 +1,1855 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "5b404f24-30b9-4bf2-aca6-5d50ddd70710",
+  "prevId": "0ba1307a-53b5-427f-a790-cd652eebe3d9",
+  "tables": {
+    "actions": {
+      "name": "actions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "response_json": {
+          "name": "response_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {
+        "actions_player_key_unique": {
+          "name": "actions_player_key_unique",
+          "columns": [
+            "player_id",
+            "idempotency_key"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "actions_player_id_players_id_fk": {
+          "name": "actions_player_id_players_id_fk",
+          "tableFrom": "actions",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "actions_status_valid": {
+          "name": "actions_status_valid",
+          "value": "\"actions\".\"status\" in ('RECEIVED', 'PARSING', 'VALIDATING', 'RESOLVING', 'COMMITTED', 'NARRATED', 'COMPLETED', 'FAILED')"
+        },
+        "actions_kind_valid": {
+          "name": "actions_kind_valid",
+          "value": "\"actions\".\"kind\" in ('fixed', 'breakthrough', 'move', 'quest')"
+        },
+        "actions_response_json_valid": {
+          "name": "actions_response_json_valid",
+          "value": "json_valid(\"actions\".\"response_json\")"
+        },
+        "actions_key_length": {
+          "name": "actions_key_length",
+          "value": "length(\"actions\".\"idempotency_key\") between 8 and 64"
+        }
+      }
+    },
+    "ai_call_logs": {
+      "name": "ai_call_logs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "action_id": {
+          "name": "action_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "day": {
+          "name": "day",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "error_kind": {
+          "name": "error_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "latency_ms": {
+          "name": "latency_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "prompt_tokens": {
+          "name": "prompt_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "completion_tokens": {
+          "name": "completion_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "total_tokens": {
+          "name": "total_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "request_chars": {
+          "name": "request_chars",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "response_chars": {
+          "name": "response_chars",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "ai_call_logs_day_idx": {
+          "name": "ai_call_logs_day_idx",
+          "columns": [
+            "day"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "ai_call_logs_action_id_actions_id_fk": {
+          "name": "ai_call_logs_action_id_actions_id_fk",
+          "tableFrom": "ai_call_logs",
+          "tableTo": "actions",
+          "columnsFrom": [
+            "action_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "ai_call_logs_purpose_valid": {
+          "name": "ai_call_logs_purpose_valid",
+          "value": "\"ai_call_logs\".\"purpose\" in ('parse', 'narrate')"
+        },
+        "ai_call_logs_status_valid": {
+          "name": "ai_call_logs_status_valid",
+          "value": "\"ai_call_logs\".\"status\" in ('pending', 'ok', 'error')"
+        },
+        "ai_call_logs_day_format": {
+          "name": "ai_call_logs_day_format",
+          "value": "\"ai_call_logs\".\"day\" glob '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"
+        },
+        "ai_call_logs_attempts_nonneg": {
+          "name": "ai_call_logs_attempts_nonneg",
+          "value": "\"ai_call_logs\".\"attempts\" >= 0"
+        },
+        "ai_call_logs_nonneg": {
+          "name": "ai_call_logs_nonneg",
+          "value": "\"ai_call_logs\".\"request_chars\" >= 0 and (\"ai_call_logs\".\"response_chars\" is null or \"ai_call_logs\".\"response_chars\" >= 0) and (\"ai_call_logs\".\"latency_ms\" is null or \"ai_call_logs\".\"latency_ms\" >= 0)"
+        }
+      }
+    },
+    "audit_events": {
+      "name": "audit_events",
+      "columns": {
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "action_id": {
+          "name": "action_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "before_json": {
+          "name": "before_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "after_json": {
+          "name": "after_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "log_json": {
+          "name": "log_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "audit_events_id_unique": {
+          "name": "audit_events_id_unique",
+          "columns": [
+            "id"
+          ],
+          "isUnique": true
+        },
+        "audit_events_action_idx": {
+          "name": "audit_events_action_idx",
+          "columns": [
+            "action_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "audit_events_actor_id_players_id_fk": {
+          "name": "audit_events_actor_id_players_id_fk",
+          "tableFrom": "audit_events",
+          "tableTo": "players",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "audit_events_action_id_actions_id_fk": {
+          "name": "audit_events_action_id_actions_id_fk",
+          "tableFrom": "audit_events",
+          "tableTo": "actions",
+          "columnsFrom": [
+            "action_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "audit_events_type_nonempty": {
+          "name": "audit_events_type_nonempty",
+          "value": "length(\"audit_events\".\"event_type\") > 0"
+        },
+        "audit_events_before_json_valid": {
+          "name": "audit_events_before_json_valid",
+          "value": "\"audit_events\".\"before_json\" is null or json_valid(\"audit_events\".\"before_json\")"
+        },
+        "audit_events_after_json_valid": {
+          "name": "audit_events_after_json_valid",
+          "value": "\"audit_events\".\"after_json\" is null or json_valid(\"audit_events\".\"after_json\")"
+        },
+        "audit_events_log_json_valid": {
+          "name": "audit_events_log_json_valid",
+          "value": "\"audit_events\".\"log_json\" is null or json_valid(\"audit_events\".\"log_json\")"
+        }
+      }
+    },
+    "cultivation_jobs": {
+      "name": "cultivation_jobs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "method_id": {
+          "name": "method_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_settled_at": {
+          "name": "last_settled_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_checked_at": {
+          "name": "last_checked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {
+        "cultivation_jobs_one_running": {
+          "name": "cultivation_jobs_one_running",
+          "columns": [
+            "player_id"
+          ],
+          "isUnique": true,
+          "where": "\"cultivation_jobs\".\"status\" = 'running'"
+        },
+        "cultivation_jobs_player_idx": {
+          "name": "cultivation_jobs_player_idx",
+          "columns": [
+            "player_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "cultivation_jobs_player_id_players_id_fk": {
+          "name": "cultivation_jobs_player_id_players_id_fk",
+          "tableFrom": "cultivation_jobs",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "cultivation_jobs_status_valid": {
+          "name": "cultivation_jobs_status_valid",
+          "value": "\"cultivation_jobs\".\"status\" in ('running', 'stopped')"
+        },
+        "cultivation_jobs_time_order": {
+          "name": "cultivation_jobs_time_order",
+          "value": "\"cultivation_jobs\".\"started_at\" >= 0 and \"cultivation_jobs\".\"last_settled_at\" >= \"cultivation_jobs\".\"started_at\""
+        }
+      }
+    },
+    "faction_history": {
+      "name": "faction_history",
+      "columns": {
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "game_minutes": {
+          "name": "game_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "changes_json": {
+          "name": "changes_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {
+        "faction_history_id_unique": {
+          "name": "faction_history_id_unique",
+          "columns": [
+            "id"
+          ],
+          "isUnique": true
+        },
+        "faction_history_event_unique": {
+          "name": "faction_history_event_unique",
+          "columns": [
+            "event_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "faction_history_event_id_world_events_id_fk": {
+          "name": "faction_history_event_id_world_events_id_fk",
+          "tableFrom": "faction_history",
+          "tableTo": "world_events",
+          "columnsFrom": [
+            "event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "faction_history_text_len": {
+          "name": "faction_history_text_len",
+          "value": "length(\"faction_history\".\"text\") between 1 and 400"
+        },
+        "faction_history_time_nonneg": {
+          "name": "faction_history_time_nonneg",
+          "value": "\"faction_history\".\"game_minutes\" >= 0"
+        },
+        "faction_history_changes_json": {
+          "name": "faction_history_changes_json",
+          "value": "json_valid(\"faction_history\".\"changes_json\") and json_type(\"faction_history\".\"changes_json\") = 'array'"
+        }
+      }
+    },
+    "faction_relations": {
+      "name": "faction_relations",
+      "columns": {
+        "a": {
+          "name": "a",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "b": {
+          "name": "b",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "faction_relations_a_factions_id_fk": {
+          "name": "faction_relations_a_factions_id_fk",
+          "tableFrom": "faction_relations",
+          "tableTo": "factions",
+          "columnsFrom": [
+            "a"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "faction_relations_b_factions_id_fk": {
+          "name": "faction_relations_b_factions_id_fk",
+          "tableFrom": "faction_relations",
+          "tableTo": "factions",
+          "columnsFrom": [
+            "b"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "faction_relations_a_b_pk": {
+          "columns": [
+            "a",
+            "b"
+          ],
+          "name": "faction_relations_a_b_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "faction_relations_order": {
+          "name": "faction_relations_order",
+          "value": "\"faction_relations\".\"a\" < \"faction_relations\".\"b\""
+        },
+        "faction_relations_range": {
+          "name": "faction_relations_range",
+          "value": "\"faction_relations\".\"value\" between -100 and 100"
+        }
+      }
+    },
+    "factions": {
+      "name": "factions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "strength": {
+          "name": "strength",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attitude": {
+          "name": "attitude",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "factions_id_format": {
+          "name": "factions_id_format",
+          "value": "\"factions\".\"id\" glob 'fac_*' and length(\"factions\".\"id\") <= 40"
+        },
+        "factions_strength_range": {
+          "name": "factions_strength_range",
+          "value": "\"factions\".\"strength\" between 0 and 100"
+        },
+        "factions_attitude_range": {
+          "name": "factions_attitude_range",
+          "value": "\"factions\".\"attitude\" between -100 and 100"
+        }
+      }
+    },
+    "game_clock": {
+      "name": "game_clock",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "minutes": {
+          "name": "minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "game_clock_single": {
+          "name": "game_clock_single",
+          "value": "\"game_clock\".\"id\" = 'main'"
+        },
+        "game_clock_nonneg": {
+          "name": "game_clock_nonneg",
+          "value": "\"game_clock\".\"minutes\" >= 0"
+        }
+      }
+    },
+    "inventory": {
+      "name": "inventory",
+      "columns": {
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "quantity": {
+          "name": "quantity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "inventory_player_id_players_id_fk": {
+          "name": "inventory_player_id_players_id_fk",
+          "tableFrom": "inventory",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "inventory_player_id_item_id_pk": {
+          "columns": [
+            "player_id",
+            "item_id"
+          ],
+          "name": "inventory_player_id_item_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "inventory_quantity_range": {
+          "name": "inventory_quantity_range",
+          "value": "\"inventory\".\"quantity\" >= 0 and \"inventory\".\"quantity\" <= 9999"
+        }
+      }
+    },
+    "locations": {
+      "name": "locations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "visited": {
+          "name": "visited",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "locations_id_format": {
+          "name": "locations_id_format",
+          "value": "\"locations\".\"id\" glob 'loc_*' and length(\"locations\".\"id\") <= 64"
+        },
+        "locations_status_valid": {
+          "name": "locations_status_valid",
+          "value": "\"locations\".\"status\" in ('open', 'blocked')"
+        },
+        "locations_reason_rule": {
+          "name": "locations_reason_rule",
+          "value": "(\"locations\".\"status\" = 'blocked') = (\"locations\".\"reason\" is not null)"
+        },
+        "locations_reason_len": {
+          "name": "locations_reason_len",
+          "value": "\"locations\".\"reason\" is null or length(\"locations\".\"reason\") between 1 and 60"
+        },
+        "locations_visited_flag": {
+          "name": "locations_visited_flag",
+          "value": "\"locations\".\"visited\" in (0, 1)"
+        }
+      }
+    },
+    "news": {
+      "name": "news",
+      "columns": {
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "game_minutes": {
+          "name": "game_minutes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "participated": {
+          "name": "participated",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {
+        "news_id_unique": {
+          "name": "news_id_unique",
+          "columns": [
+            "id"
+          ],
+          "isUnique": true
+        },
+        "news_event_kind_unique": {
+          "name": "news_event_kind_unique",
+          "columns": [
+            "event_id",
+            "kind"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "news_event_id_world_events_id_fk": {
+          "name": "news_event_id_world_events_id_fk",
+          "tableFrom": "news",
+          "tableTo": "world_events",
+          "columnsFrom": [
+            "event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "news_kind_valid": {
+          "name": "news_kind_valid",
+          "value": "\"news\".\"kind\" in ('rumor', 'news')"
+        },
+        "news_text_len": {
+          "name": "news_text_len",
+          "value": "length(\"news\".\"text\") between 1 and 400"
+        },
+        "news_time_nonneg": {
+          "name": "news_time_nonneg",
+          "value": "\"news\".\"game_minutes\" >= 0"
+        },
+        "news_participated_flag": {
+          "name": "news_participated_flag",
+          "value": "\"news\".\"participated\" in (0, 1)"
+        }
+      }
+    },
+    "npc_memories": {
+      "name": "npc_memories",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "npc_id": {
+          "name": "npc_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "memory_type": {
+          "name": "memory_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "importance": {
+          "name": "importance",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_count": {
+          "name": "source_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "npc_memories_npc_idx": {
+          "name": "npc_memories_npc_idx",
+          "columns": [
+            "npc_id",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "npc_memories_event_idx": {
+          "name": "npc_memories_event_idx",
+          "columns": [
+            "event_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "npc_memories_npc_id_npcs_id_fk": {
+          "name": "npc_memories_npc_id_npcs_id_fk",
+          "tableFrom": "npc_memories",
+          "tableTo": "npcs",
+          "columnsFrom": [
+            "npc_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "npc_memories_event_id_audit_events_id_fk": {
+          "name": "npc_memories_event_id_audit_events_id_fk",
+          "tableFrom": "npc_memories",
+          "tableTo": "audit_events",
+          "columnsFrom": [
+            "event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "npc_memories_type_valid": {
+          "name": "npc_memories_type_valid",
+          "value": "\"npc_memories\".\"memory_type\" in ('met', 'breakthrough_success', 'breakthrough_failure', 'summary')"
+        },
+        "npc_memories_event_rule": {
+          "name": "npc_memories_event_rule",
+          "value": "(\"npc_memories\".\"memory_type\" = 'summary') = (\"npc_memories\".\"event_id\" is null)"
+        },
+        "npc_memories_summary_len": {
+          "name": "npc_memories_summary_len",
+          "value": "length(\"npc_memories\".\"summary\") between 1 and 160"
+        },
+        "npc_memories_importance_range": {
+          "name": "npc_memories_importance_range",
+          "value": "\"npc_memories\".\"importance\" between 1 and 10"
+        },
+        "npc_memories_source_count": {
+          "name": "npc_memories_source_count",
+          "value": "\"npc_memories\".\"source_count\" between 1 and 10000"
+        },
+        "npc_memories_created_at": {
+          "name": "npc_memories_created_at",
+          "value": "\"npc_memories\".\"created_at\" >= 0"
+        }
+      }
+    },
+    "npc_relationships": {
+      "name": "npc_relationships",
+      "columns": {
+        "npc_id": {
+          "name": "npc_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_type": {
+          "name": "target_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "affinity": {
+          "name": "affinity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "trust": {
+          "name": "trust",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hostility": {
+          "name": "hostility",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {
+        "npc_relationships_target_idx": {
+          "name": "npc_relationships_target_idx",
+          "columns": [
+            "target_type",
+            "target_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "npc_relationships_npc_id_npcs_id_fk": {
+          "name": "npc_relationships_npc_id_npcs_id_fk",
+          "tableFrom": "npc_relationships",
+          "tableTo": "npcs",
+          "columnsFrom": [
+            "npc_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "npc_relationships_npc_id_target_type_target_id_pk": {
+          "columns": [
+            "npc_id",
+            "target_type",
+            "target_id"
+          ],
+          "name": "npc_relationships_npc_id_target_type_target_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "npc_relationships_target_type": {
+          "name": "npc_relationships_target_type",
+          "value": "\"npc_relationships\".\"target_type\" in ('player', 'npc')"
+        },
+        "npc_relationships_no_self": {
+          "name": "npc_relationships_no_self",
+          "value": "not (\"npc_relationships\".\"target_type\" = 'npc' and \"npc_relationships\".\"target_id\" = \"npc_relationships\".\"npc_id\")"
+        },
+        "npc_relationships_affinity_range": {
+          "name": "npc_relationships_affinity_range",
+          "value": "\"npc_relationships\".\"affinity\" between -100 and 100"
+        },
+        "npc_relationships_trust_range": {
+          "name": "npc_relationships_trust_range",
+          "value": "\"npc_relationships\".\"trust\" between 0 and 100"
+        },
+        "npc_relationships_hostility_range": {
+          "name": "npc_relationships_hostility_range",
+          "value": "\"npc_relationships\".\"hostility\" between 0 and 100"
+        }
+      }
+    },
+    "npcs": {
+      "name": "npcs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "location_id": {
+          "name": "location_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "goals_json": {
+          "name": "goals_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {
+        "npcs_location_idx": {
+          "name": "npcs_location_idx",
+          "columns": [
+            "location_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "npcs_id_format": {
+          "name": "npcs_id_format",
+          "value": "\"npcs\".\"id\" glob 'npc_*' and length(\"npcs\".\"id\") <= 64"
+        },
+        "npcs_location_format": {
+          "name": "npcs_location_format",
+          "value": "\"npcs\".\"location_id\" glob 'loc_*' and length(\"npcs\".\"location_id\") <= 64"
+        },
+        "npcs_status_valid": {
+          "name": "npcs_status_valid",
+          "value": "\"npcs\".\"status\" in ('active', 'away', 'resting')"
+        },
+        "npcs_goals_json_valid": {
+          "name": "npcs_goals_json_valid",
+          "value": "json_valid(\"npcs\".\"goals_json\") and json_type(\"npcs\".\"goals_json\") = 'array'"
+        }
+      }
+    },
+    "player_states": {
+      "name": "player_states",
+      "columns": {
+        "player_id": {
+          "name": "player_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "realm": {
+          "name": "realm",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "realm_progress": {
+          "name": "realm_progress",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hp": {
+          "name": "hp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "max_hp": {
+          "name": "max_hp",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stamina": {
+          "name": "stamina",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "max_stamina": {
+          "name": "max_stamina",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "neili_current": {
+          "name": "neili_current",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "neili_max": {
+          "name": "neili_max",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "yuanbao": {
+          "name": "yuanbao",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "silver": {
+          "name": "silver",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "copper": {
+          "name": "copper",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attributes_json": {
+          "name": "attributes_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title_json": {
+          "name": "title_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "epithet_json": {
+          "name": "epithet_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fate_json": {
+          "name": "fate_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "location_id": {
+          "name": "location_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "location_name": {
+          "name": "location_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "breakthrough_available_at": {
+          "name": "breakthrough_available_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "player_states_player_id_players_id_fk": {
+          "name": "player_states_player_id_players_id_fk",
+          "tableFrom": "player_states",
+          "tableTo": "players",
+          "columnsFrom": [
+            "player_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "player_states_realm_valid": {
+          "name": "player_states_realm_valid",
+          "value": "\"player_states\".\"realm\" in ('body_tempering', 'opening', 'houtian', 'xiantian', 'grandmaster', 'mingshen', 'land_immortal')"
+        },
+        "player_states_progress_range": {
+          "name": "player_states_progress_range",
+          "value": "\"player_states\".\"realm_progress\" between 0 and 100"
+        },
+        "player_states_hp_range": {
+          "name": "player_states_hp_range",
+          "value": "\"player_states\".\"hp\" >= 0 and \"player_states\".\"max_hp\" >= 1 and \"player_states\".\"hp\" <= \"player_states\".\"max_hp\""
+        },
+        "player_states_stamina_range": {
+          "name": "player_states_stamina_range",
+          "value": "\"player_states\".\"stamina\" >= 0 and \"player_states\".\"max_stamina\" >= 1 and \"player_states\".\"stamina\" <= \"player_states\".\"max_stamina\""
+        },
+        "player_states_neili_consistent": {
+          "name": "player_states_neili_consistent",
+          "value": "(\"player_states\".\"neili_current\" is null and \"player_states\".\"neili_max\" is null) or (\"player_states\".\"neili_current\" is not null and \"player_states\".\"neili_max\" is not null and \"player_states\".\"neili_current\" >= 0 and \"player_states\".\"neili_max\" >= 1 and \"player_states\".\"neili_current\" <= \"player_states\".\"neili_max\")"
+        },
+        "player_states_currency_nonneg": {
+          "name": "player_states_currency_nonneg",
+          "value": "\"player_states\".\"yuanbao\" >= 0 and \"player_states\".\"silver\" >= 0 and \"player_states\".\"copper\" >= 0"
+        },
+        "player_states_version_nonneg": {
+          "name": "player_states_version_nonneg",
+          "value": "\"player_states\".\"version\" >= 0"
+        },
+        "player_states_cooldown_nonneg": {
+          "name": "player_states_cooldown_nonneg",
+          "value": "\"player_states\".\"breakthrough_available_at\" is null or \"player_states\".\"breakthrough_available_at\" >= 0"
+        }
+      }
+    },
+    "players": {
+      "name": "players",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "quests": {
+      "name": "quests",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "step_index": {
+          "name": "step_index",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "quests_id_format": {
+          "name": "quests_id_format",
+          "value": "\"quests\".\"id\" glob 'quest_*' and length(\"quests\".\"id\") <= 64"
+        },
+        "quests_status_valid": {
+          "name": "quests_status_valid",
+          "value": "\"quests\".\"status\" in ('locked', 'available', 'active', 'completed', 'failed')"
+        },
+        "quests_step_range": {
+          "name": "quests_step_range",
+          "value": "\"quests\".\"step_index\" between 0 and 50"
+        },
+        "quests_accepted_rule": {
+          "name": "quests_accepted_rule",
+          "value": "(\"quests\".\"accepted_at\" is null) = (\"quests\".\"status\" in ('locked', 'available'))"
+        },
+        "quests_finished_rule": {
+          "name": "quests_finished_rule",
+          "value": "(\"quests\".\"finished_at\" is null) = (\"quests\".\"status\" not in ('completed', 'failed'))"
+        },
+        "quests_claimed_rule": {
+          "name": "quests_claimed_rule",
+          "value": "\"quests\".\"claimed_at\" is null or \"quests\".\"status\" = 'completed'"
+        }
+      }
+    },
+    "world_clock": {
+      "name": "world_clock",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "high_water_at": {
+          "name": "high_water_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "world_clock_nonneg": {
+          "name": "world_clock_nonneg",
+          "value": "\"world_clock\".\"high_water_at\" >= 0"
+        }
+      }
+    },
+    "world_events": {
+      "name": "world_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "rumored": {
+          "name": "rumored",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "participated": {
+          "name": "participated",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch('subsec') * 1000)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "world_events_id_format": {
+          "name": "world_events_id_format",
+          "value": "\"world_events\".\"id\" glob 'evt_*' and length(\"world_events\".\"id\") <= 48"
+        },
+        "world_events_state_valid": {
+          "name": "world_events_state_valid",
+          "value": "\"world_events\".\"state\" in ('scheduled', 'open', 'resolved', 'missed')"
+        },
+        "world_events_flags": {
+          "name": "world_events_flags",
+          "value": "\"world_events\".\"rumored\" in (0, 1) and \"world_events\".\"participated\" in (0, 1)"
+        },
+        "world_events_resolved_time": {
+          "name": "world_events_resolved_time",
+          "value": "(\"world_events\".\"state\" in ('resolved', 'missed')) = (\"world_events\".\"resolved_at\" is not null)"
+        },
+        "world_events_resolved_time_nonneg": {
+          "name": "world_events_resolved_time_nonneg",
+          "value": "\"world_events\".\"resolved_at\" is null or \"world_events\".\"resolved_at\" >= 0"
+        },
+        "world_events_participated_resolved": {
+          "name": "world_events_participated_resolved",
+          "value": "\"world_events\".\"participated\" = 0 or \"world_events\".\"state\" = 'resolved'"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

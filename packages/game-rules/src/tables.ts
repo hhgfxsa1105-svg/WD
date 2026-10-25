@@ -31,8 +31,8 @@ export const BREAKTHROUGH_RULES = {
   percentPerScore: 2,
   minPercent: 5,
   maxPercent: 95,
-  /** 失败后的冷却：真实 24 小时（服务端时间） */
-  cooldownMs: 24 * 60 * 60 * 1000,
+  /** 失败后的冷却：24 游戏小时（游戏分钟，从尝试结束时起算） */
+  cooldownMinutes: 24 * 60,
   /** 失败损失：进度回落点数、气血上限比例（不会掉境界，也不会致死） */
   failureProgressLoss: 20,
   failureHpLossRatio: 0.2,
@@ -58,6 +58,8 @@ export const IDLE_CULTIVATION = {
   tickMs: 60_000,
   progressPerTick: 0.2,
   neiliPerTick: 0.5,
+  /** 每个时间片推进的游戏分钟：现实 1 分钟 = 游戏 2 分钟（1 小时 = 1 时辰） */
+  gameMinutesPerTick: 2,
 } as const;
 
 /**

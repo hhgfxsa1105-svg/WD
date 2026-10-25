@@ -12,7 +12,7 @@ import {
   resolveBreakthrough,
 } from '../src/index.js';
 
-const NOW = 1_800_000_000_000;
+const NOW = 10_000; // 游戏分钟
 const ready = (patch: Partial<PlayerState> = {}): PlayerState => ({ ...createInitialPlayer(), realmProgress: 100, ...patch });
 const withAttrs = (con: number, comp: number, spirit: number): PlayerState['attributes'] => ({
   ...createInitialPlayer().attributes,
@@ -171,11 +171,16 @@ describe('突破失败', () => {
     expect(r.player.realm).toBe('body_tempering');
     expect(r.player.realmProgress).toBe(80);
     expect(r.player.hp).toBe(80);
-    expect(r.player.breakthroughAvailableAt).toBe(NOW + BREAKTHROUGH_RULES.cooldownMs);
+    expect(r.player.breakthroughAvailableAt).toBe(NOW + BREAKTHROUGH_RULES.cooldownMinutes);
     expect(r.changes).toEqual([
       { stat: 'realmProgress', delta: -20 },
       { stat: 'hp', delta: -20 },
     ]);
+  });
+
+  it('冷却从尝试结束时起算：elapsed 计入', () => {
+    const r = ok(resolveBreakthrough(ready(), { now: NOW, rng: fixedRng(0.9999), elapsed: 180 }));
+    expect(r.player.breakthroughAvailableAt).toBe(NOW + 180 + BREAKTHROUGH_RULES.cooldownMinutes);
   });
 
   it('气血很低时至少保留 1 点，不会致死', () => {
@@ -186,13 +191,13 @@ describe('突破失败', () => {
   it('失败后冷却期内不能再次突破，24 小时后可以', () => {
     const after = fail().player;
     const retry = (now: number) => resolveBreakthrough({ ...after, realmProgress: 100 }, { now, rng: fixedRng(0) });
-    expect(retry(NOW + BREAKTHROUGH_RULES.cooldownMs - 1)).toMatchObject({ ok: false, code: 'COOLDOWN' });
-    expect(retry(NOW + BREAKTHROUGH_RULES.cooldownMs).ok).toBe(true);
+    expect(retry(NOW + BREAKTHROUGH_RULES.cooldownMinutes - 1)).toMatchObject({ ok: false, code: 'COOLDOWN' });
+    expect(retry(NOW + BREAKTHROUGH_RULES.cooldownMinutes).ok).toBe(true);
   });
 
   it('失败后进度低于 100，需要重新修炼才能再试', () => {
     const after = fail().player;
-    expect(resolveBreakthrough(after, { now: NOW + BREAKTHROUGH_RULES.cooldownMs, rng: fixedRng(0) })).toMatchObject({
+    expect(resolveBreakthrough(after, { now: NOW + BREAKTHROUGH_RULES.cooldownMinutes, rng: fixedRng(0) })).toMatchObject({
       ok: false,
       code: 'PROGRESS_NOT_FULL',
     });

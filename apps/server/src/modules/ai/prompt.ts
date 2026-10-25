@@ -25,6 +25,7 @@ const ACTION_HELP: Record<(typeof AI_ACTION_TYPES)[number], string> = {
   check_status: '查看自己的状态',
   talk: '与人交谈',
   travel: '前往某个地点（target 填地点 ID）',
+  custom: '预设选项之外、但在武侠世界里合理的行为，如帮人干活、打听消息、摆摊、切磋、巡视（target 填 null）',
   other: '以上都不是，或看不懂',
 };
 

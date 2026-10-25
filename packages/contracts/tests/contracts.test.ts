@@ -185,7 +185,7 @@ describe('AiActionPlanSchema（AI 行动方案，不可信输入）', () => {
     expect(AiActionPlanSchema.safeParse({ ...plan, action_type: 'breakthrough', target: { type: 'item', id: 'pill_breakthrough_fan' } }).success).toBe(true);
   });
   it('动作类型枚举覆盖设计内的全部类型', () => {
-    expect([...AI_ACTION_TYPES]).toEqual(['cultivate', 'rest', 'breakthrough', 'start_idle', 'stop_idle', 'check_status', 'talk', 'travel', 'other']);
+    expect([...AI_ACTION_TYPES]).toEqual(['cultivate', 'rest', 'breakthrough', 'start_idle', 'stop_idle', 'check_status', 'talk', 'travel', 'custom', 'other']);
   });
   it.each([
     ['缺 action_type', { action_type: undefined }],
