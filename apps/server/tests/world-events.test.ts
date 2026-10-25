@@ -358,7 +358,7 @@ describe('审计：事件相关的每个变更都有可重放的差异', () => {
     const app = await buildApp({ store, clock: { now: () => T0 }, rng: fixedRng(0) });
     const { snapshot } = await import('../src/modules/audit/diff.js');
     type Snap = Record<string, unknown>;
-    const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests', 'locations', 'worldEvents', 'factions', 'factionRelations'];
+    const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests', 'locations', 'worldEvents', 'factions', 'factionRelations', 'personalEvents'];
     const initial = store.read((tx) => snapshot(tx)) as Snap;
     const tick = (to: number) =>
       store.transact((tx) => {

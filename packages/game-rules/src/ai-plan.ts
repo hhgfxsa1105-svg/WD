@@ -111,6 +111,7 @@ const ACTION_SYNONYMS: [RegExp, AiActionType][] = [
   [/^(check_status|status|inspect_self|查看状态|查看|状态|属性)$/, 'check_status'],
   [/^(talk|chat|speak|dialogue|交谈|对话|聊天|说话)$/, 'talk'],
   [/^(travel|move|go|goto|go_to|walk|前往|去|移动|走|赶路|去往)$/, 'travel'],
+  [/^(custom|custom_action|自定义|自定义行为|自由行动)$/, 'custom'],
   [/^(other|unknown|none|其他|不明)$/, 'other'],
 ];
 
@@ -121,7 +122,7 @@ const TARGET_TYPE_SYNONYMS: [RegExp, AiTargetType][] = [
 ];
 
 /** 这些动作不需要目标：模型多写的目标直接丢弃（不参与结算，丢弃是安全的） */
-const NO_TARGET_ACTIONS: ReadonlySet<AiActionType> = new Set(['cultivate', 'rest', 'start_idle', 'stop_idle', 'check_status', 'other']);
+const NO_TARGET_ACTIONS: ReadonlySet<AiActionType> = new Set(['cultivate', 'rest', 'start_idle', 'stop_idle', 'check_status', 'custom', 'other']);
 
 const DEFAULT_CLARIFICATION = '没太明白你想做什么，可以换个说法，比如「修炼」「休息」或「突破」。';
 

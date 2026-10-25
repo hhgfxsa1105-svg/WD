@@ -291,7 +291,7 @@ describe('审计：势力变化可重放', () => {
     const app = await buildApp({ store, clock: { now: () => T0 }, rng: fixedRng(0) });
     const g = gameOn(store, app);
     type Snap = Record<string, unknown>;
-    const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests', 'locations', 'worldEvents', 'factions', 'factionRelations'];
+    const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests', 'locations', 'worldEvents', 'factions', 'factionRelations', 'personalEvents'];
     const initial = store.read((tx) => snapshot(tx)) as Snap;
     g.goto(def(RAID).startAt - 30);
     expect((await app.inject({ method: 'POST', url: '/api/v1/actions', payload: { idempotencyKey: 'fac-audit-0001', kind: 'move', locationId: 'loc_foot_path' } })).statusCode).toBe(200);

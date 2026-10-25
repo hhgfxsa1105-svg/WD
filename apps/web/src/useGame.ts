@@ -10,6 +10,7 @@ import type {
   InventoryItem,
   LogRecord,
   NpcView,
+  PersonalListResponse,
   WorldEventView,
   WorldMapResponse,
   QuestOp,
@@ -23,7 +24,10 @@ import {
   fetchCultivation,
   fetchInventory,
   fetchLog,
+  abandonPersonal,
   fetchEvents,
+  fetchPersonal,
+  resolvePersonal,
   fetchMap,
   joinWorldEvent,
   fetchNpcs,
@@ -75,6 +79,7 @@ export function useGame() {
   const [npcs, setNpcs] = useState<NpcView[]>([]);
   const [map, setMap] = useState<WorldMapResponse | null>(null);
   const [events, setEvents] = useState<WorldEventView[]>([]);
+  const [personal, setPersonal] = useState<PersonalListResponse | null>(null);
 
   const busyRef = useRef(false);
   const refreshRef = useRef<() => Promise<void>>(async () => undefined);
@@ -117,13 +122,14 @@ export function useGame() {
 
   const load = useCallback(() => {
     setLoadError(null);
-    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation(), fetchWorldTime().catch(() => null), fetchLog().catch(() => [] as LogRecord[]), fetchAiStatus().catch(() => null), fetchQuests().catch(() => [] as QuestView[]), fetchNpcs().catch(() => [] as NpcView[]), fetchMap().catch(() => null), fetchEvents().catch(() => [] as WorldEventView[])]).then(
-      async ([p, inv, c, w, history, ai, qs, ns, mp, evs]) => {
+    Promise.all([fetchPlayerState(), fetchInventory(), fetchCultivation(), fetchWorldTime().catch(() => null), fetchLog().catch(() => [] as LogRecord[]), fetchAiStatus().catch(() => null), fetchQuests().catch(() => [] as QuestView[]), fetchNpcs().catch(() => [] as NpcView[]), fetchMap().catch(() => null), fetchEvents().catch(() => [] as WorldEventView[]), fetchPersonal().catch(() => null)]).then(
+      async ([p, inv, c, w, history, ai, qs, ns, mp, evs, pers]) => {
         setAiStatus(ai);
         setQuests(qs);
         setNpcs(ns);
         setMap(mp);
         setEvents(evs);
+        setPersonal(pers);
         setWorld(w);
         setLog(mergeEntries([WELCOME], history.flatMap(toLogEntries)));
         setPlayer(p);
@@ -245,8 +251,9 @@ export function useGame() {
 
   /** 行动之后重新读取日志、任务与人物：服务端写入的任务进度提示、人物变化才会马上显示 */
   const refreshWorld = useCallback(async () => {
-    const [history, qs, ns, mp, w, evs] = await Promise.all([fetchLog().catch(() => null), fetchQuests().catch(() => null), fetchNpcs().catch(() => null), fetchMap().catch(() => null), fetchWorldTime().catch(() => null), fetchEvents().catch(() => null)]);
+    const [history, qs, ns, mp, w, evs, pers] = await Promise.all([fetchLog().catch(() => null), fetchQuests().catch(() => null), fetchNpcs().catch(() => null), fetchMap().catch(() => null), fetchWorldTime().catch(() => null), fetchEvents().catch(() => null), fetchPersonal().catch(() => null)]);
     if (evs) setEvents(evs);
+    if (pers) setPersonal(pers);
     if (history) setLog((l) => mergeEntries(l, history.flatMap(toLogEntries)));
     if (qs) setQuests(qs);
     if (ns) setNpcs(ns);
@@ -255,6 +262,15 @@ export function useGame() {
   }, []);
 
   refreshRef.current = refreshWorld;
+
+  /** 个人事件：进行（服务端掷点判定成败）或放弃 */
+  const runPersonal = (id: string, op: 'resolve' | 'abandon') =>
+    guarded(async () => {
+      const r = await (op === 'resolve' ? resolvePersonal(id) : abandonPersonal(id));
+      setPlayer(r.player);
+      appendRecord(r.log);
+      await refreshWorld();
+    }, resync);
 
   /** 到场参加一个进行中的事件（在场与时机由服务端判定） */
   const runJoinEvent = (eventId: string) =>
@@ -351,6 +367,8 @@ export function useGame() {
     npcs,
     map,
     events,
+    personal,
+    runPersonal,
     runJoinEvent,
     runMove,
     runQuestOp,

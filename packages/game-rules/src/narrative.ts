@@ -9,9 +9,9 @@ export type NarrativeRejection = 'EMPTY' | 'TOO_SHORT' | 'TOO_LONG' | 'NUMBERS' 
 export type NarrativeVerdict = { ok: true; text: string } | { ok: false; reason: NarrativeRejection };
 
 /** 数字、货币、成功率等：叙事里不能出现任何会被误读为「数值变化」的内容 */
-const NUMBERISH = /[0-9０-９%％]|元宝|银两|铜钱|经验|成功率|概率|几率/;
+export const NUMBERISH = /[0-9０-９%％]|元宝|银两|铜钱|经验|成功率|概率|几率/;
 /** 像系统提示、指令、格式标记或链接的内容 */
-const SYSTEM_LIKE = /系统|指令|提示词|规则|prompt|system|assistant|ignore|忽略(以上|之前|上述)|作为.{0,4}(AI|人工智能|语言模型)|json|[{}\[\]<>]|```|https?:|\/\//i;
+export const SYSTEM_LIKE = /系统|指令|提示词|规则|prompt|system|assistant|ignore|忽略(以上|之前|上述)|作为.{0,4}(AI|人工智能|语言模型)|json|[{}\[\]<>]|```|https?:|\/\//i;
 const SAYS_FAILURE = /失败|未能|功亏一篑|不成|无果|惨败|折戟|落败/;
 const SAYS_SUCCESS = /成功|突破了|踏入|晋升|晋级|圆满|大成|更进一步|破境而出/;
 

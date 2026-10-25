@@ -11,6 +11,7 @@ export * from './initial.js';
 export * from './items.js';
 export * from './memory.js';
 export * from './narrative.js';
+export * from './personal.js';
 export * from './progress.js';
 export * from './quests.js';
 export * from './rng.js';

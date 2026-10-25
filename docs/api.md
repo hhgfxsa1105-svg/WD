@@ -12,6 +12,9 @@
 | `POST /actions` | 提交行动，必带 `idempotencyKey`。`kind`：`fixed`（`actionId`: `cultivate`/`rest`）、`breakthrough`（`pillItemId`: 突破丹药物品 ID 或 `null`）、`free`（`input`: 玩家原话，由 AI 解析，见 `docs/ai-contract.md`）、`move`（`locationId`: 相邻地点 ID）、`quest`（`questId`、`op`: `accept` / `claim` / `abandon`） |
 | `POST /actions/:id/narrate` | 重新生成叙事（仅对叙事待补的行动调用 AI；只改文字，不改任何状态）。失败 503 `AI_UNAVAILABLE`；已完成的行动直接返回 |
 | `GET /world/events` | 世界事件（只读）：已放出传闻的、进行中的和已过去的；传闻阶段不含名字与地点；进行中的带地点、截止时间、`canJoin` 与不能参加的原因 |
+| `GET /world/personal` | 个人事件：进行中的（`active`，= 玩家正忙；含档位、耗时、体力、难度、成功率、逾期时间）与最近 5 件已了结的。只读 |
+| `POST /world/personal/:id/resolve` | 进行：服务端掷点判定成败，扣体力、走时间，应用对应分支的白名单效果；体力不足 / 已了结 422 |
+| `POST /world/personal/:id/abandon` | 放弃：算失败，不耗时间体力、不发生效果；已了结 422 |
 | `GET /world/factions` | 势力现状（实力 / 对玩家的态度，描述 + 数值）、势力之间的关系、最近的势力历史（每项变化的前后值）。只读；只含已了结事件造成的变化 |
 | `GET /world/news?limit=` | 传闻与新闻，最新在前（默认 50，最多 200）。只读 |
 | `POST /world/events/:id/join` | 到场参加进行中的事件（不依赖 AI）：必须 `open` 且人在事件地点；小额奖励与耗时由程序定义；重复参加 / 已过去 / 不在现场 422，没有这个事件 404 |

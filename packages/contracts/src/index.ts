@@ -14,6 +14,7 @@ export * from './event.js';
 export * from './faction.js';
 export * from './location.js';
 export * from './log.js';
+export * from './personal.js';
 export * from './audit.js';
 export * from './world.js';
 export * from './error.js';

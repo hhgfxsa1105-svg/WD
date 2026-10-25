@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, foreignKey, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { check, foreignKey, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 const nowMs = sql`(unixepoch('subsec') * 1000)`;
 /** 与 @jhz/contracts 的 REALMS 保持一致（测试校验）；drizzle-kit 无法加载 TS 源码包，故此处内联 */
@@ -426,6 +426,55 @@ export const factionHistory = sqliteTable(
     check('faction_history_text_len', sql`length(${t.text}) between 1 and 400`),
     check('faction_history_time_nonneg', sql`${t.gameMinutes} >= 0`),
     check('faction_history_changes_json', sql`json_valid(${t.changesJson}) and json_type(${t.changesJson}) = 'array'`),
+  ],
+);
+
+/** 与 @jhz/contracts 的 PERSONAL_STATES 保持一致（测试校验） */
+export const DB_PERSONAL_STATES = ['active', 'resolved', 'abandoned', 'expired'] as const;
+const personalStateList = sql.raw(DB_PERSONAL_STATES.map((r) => `'${r}'`).join(', '));
+
+/**
+ * 个人事件（个人轨）：玩家自定义行为 → AI 提议 → 玩家进行或放弃。
+ * 约束：同一时间最多一个 active（唯一部分索引 = 玩家「正忙」）；
+ * 进行中没有结果，其余必须有；只有 resolved 有掷点；放弃 / 作废只能是失败；幂等键唯一。
+ */
+export const personalEvents = sqliteTable(
+  'personal_events',
+  {
+    id: text('id').primaryKey(),
+    idempotencyKey: text('idempotency_key'),
+    fingerprint: text('fingerprint'),
+    state: text('state').notNull(),
+    intent: text('intent').notNull(),
+    proposalJson: text('proposal_json').notNull(),
+    createdAtMinutes: integer('created_at_minutes').notNull(),
+    expiresAtMinutes: integer('expires_at_minutes').notNull(),
+    chancePercent: integer('chance_percent').notNull(),
+    outcome: text('outcome'),
+    roll: real('roll'),
+    resolvedAtMinutes: integer('resolved_at_minutes'),
+    lockLocationId: text('lock_location_id'),
+    lockReason: text('lock_reason'),
+    lockUntilMinutes: integer('lock_until_minutes'),
+    lockReleased: integer('lock_released').notNull().default(0),
+    createdAt: integer('created_at').notNull().default(nowMs),
+  },
+  (t) => [
+    uniqueIndex('personal_events_key_unique').on(t.idempotencyKey),
+    uniqueIndex('personal_events_one_active').on(t.state).where(sql`${t.state} = 'active'`),
+    check('personal_events_state_valid', sql`${t.state} in (${personalStateList})`),
+    check('personal_events_outcome_valid', sql`${t.outcome} is null or ${t.outcome} in ('success', 'failure')`),
+    check('personal_events_outcome_iff_done', sql`(${t.state} = 'active') = (${t.outcome} is null)`),
+    check('personal_events_roll_iff_resolved', sql`(${t.state} = 'resolved') = (${t.roll} is not null)`),
+    check('personal_events_roll_range', sql`${t.roll} is null or (${t.roll} >= 0 and ${t.roll} < 100)`),
+    check('personal_events_resolved_time_iff_done', sql`(${t.state} = 'active') = (${t.resolvedAtMinutes} is null)`),
+    check('personal_events_unresolved_is_failure', sql`${t.state} = 'resolved' or ${t.outcome} is null or ${t.outcome} = 'failure'`),
+    check('personal_events_chance_range', sql`${t.chancePercent} between 0 and 100`),
+    check('personal_events_times', sql`${t.createdAtMinutes} >= 0 and ${t.expiresAtMinutes} >= ${t.createdAtMinutes}`),
+    check('personal_events_lock_consistent', sql`(${t.lockLocationId} is null) = (${t.lockUntilMinutes} is null) and (${t.lockLocationId} is null) = (${t.lockReason} is null)`),
+    check('personal_events_lock_flag', sql`${t.lockReleased} in (0, 1)`),
+    check('personal_events_intent_len', sql`length(${t.intent}) between 1 and 80`),
+    check('personal_events_proposal_json', sql`json_valid(${t.proposalJson})`),
   ],
 );
 

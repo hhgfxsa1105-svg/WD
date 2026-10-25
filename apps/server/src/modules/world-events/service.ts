@@ -28,6 +28,7 @@ import {
 } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import { snapshot, stateDiff } from '../audit/diff.js';
+import { maintainPersonal } from '../personal/lifecycle.js';
 import { advanceQuests } from '../quest/service.js';
 import type { GameStore, GameTx, LogPayload } from '../store/types.js';
 
@@ -80,12 +81,16 @@ export function tickWorld(tx: GameTx, opts: TickOptions): number {
   for (const def of sortedDefs(opts.defs ?? SYSTEM_EVENT_DEFS)) {
     let row = rows.get(def.id) ?? tx.ensureWorldEvent(def.id);
     for (const step of planSteps(def, row, tx.gameMinutes())) {
-      if (done >= cap) return done;
+      if (done >= cap) {
+        maintainPersonal(tx, opts);
+        return done;
+      }
       applyStep(tx, def, step, opts);
       done++;
       row = tx.worldEvents().find((e) => e.id === def.id)!;
     }
   }
+  maintainPersonal(tx, opts); // 个人轨：逾期作废、临时封锁到期恢复
   return done;
 }
 
@@ -118,6 +123,7 @@ const when = (minutes: number) => ({ minutes, label: gameDate(minutes).label });
 export function eventViews(tx: GameTx, defs: Defs = SYSTEM_EVENT_DEFS): WorldEventView[] {
   const rows = new Map(tx.worldEvents().map((e) => [e.id, e]));
   const here = tx.player().location.id;
+  const busy = tx.activePersonalEvent();
   const resultText = new Map(tx.news().filter((n) => n.kind === 'news').map((n) => [n.eventId, n.text]));
   const views: WorldEventView[] = [];
   for (const def of sortedDefs(defs)) {
@@ -131,7 +137,9 @@ export function eventViews(tx: GameTx, defs: Defs = SYSTEM_EVENT_DEFS): WorldEve
     const location = def.locationId ? { id: def.locationId, name: locName(def.locationId) } : null;
     if (row.state === 'open') {
       const atPlace = !def.locationId || def.locationId === here;
-      views.push(WorldEventViewSchema.parse({ ...base, title: def.title, summary: def.opening, location, closesAt: when(eventEndsAt(def)), canJoin: atPlace, joinBlockedReason: atPlace ? null : `你不在现场，要去${location!.name}` }));
+      const canJoin = atPlace && !busy;
+      const why = busy ? `你正忙着「${busy.proposal.title}」` : atPlace ? null : `你不在现场，要去${location!.name}`;
+      views.push(WorldEventViewSchema.parse({ ...base, title: def.title, summary: def.opening, location, closesAt: when(eventEndsAt(def)), canJoin, joinBlockedReason: why }));
     } else {
       // 结果以当时发布的新闻为准（结局可能因前序事件而不同）
       const summary = resultText.get(def.id) ?? def.resolved;
@@ -189,6 +197,8 @@ export function joinEvent(store: GameStore, eventId: string, at: number, defs: D
     if (row.state === 'scheduled') throw new AppError('PRECONDITION_FAILED', '还没到时候');
     if (row.participated) throw new AppError('PRECONDITION_FAILED', '你已经参加过了');
     if (row.state !== 'open') throw new AppError('PRECONDITION_FAILED', '这件事已经过去了');
+    const busy = tx.activePersonalEvent();
+    if (busy) throw new AppError('PRECONDITION_FAILED', `你正忙着「${busy.proposal.title}」，先处理完或放弃它再说`);
     const player = tx.player();
     if (def.locationId && player.location.id !== def.locationId) throw new AppError('PRECONDITION_FAILED', `你不在现场，要去${locName(def.locationId)}`);
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FactionHistorySchema, FactionRelationSchema, FactionStateSchema, type FactionHistory, type FactionRelation, type FactionState, NewsItemSchema, WorldEventRecordSchema, LocationStateSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, QuestStateSchema, RelationshipSchema, type LocationState, type NewsItem, type WorldEventRecord, type NpcMemory, type NpcState, type PlayerState, type QuestState, type Relationship } from '@jhz/contracts';
+import { PersonalEventRecordSchema, type PersonalEventRecord, FactionHistorySchema, FactionRelationSchema, FactionStateSchema, type FactionHistory, type FactionRelation, type FactionState, NewsItemSchema, WorldEventRecordSchema, LocationStateSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, QuestStateSchema, RelationshipSchema, type LocationState, type NewsItem, type WorldEventRecord, type NpcMemory, type NpcState, type PlayerState, type QuestState, type Relationship } from '@jhz/contracts';
 
 export const SAVE_FORMAT = 'jianghu-save';
 
@@ -22,6 +22,8 @@ const WorldSchema = z
     factions: z.array(FactionStateSchema).max(50).default([]),
     factionRelations: z.array(FactionRelationSchema).max(500).default([]),
     factionHistory: z.array(FactionHistorySchema).max(1000).default([]),
+    /** 个人事件（含进行中的）；缺省视为没有。幂等键不进存档 */
+    personalEvents: z.array(PersonalEventRecordSchema).max(200).default([]),
     /** 背包（物品 ID + 数量）；缺省表示不改动目标存档的背包 */
     inventory: z.array(z.object({ itemId: z.string().min(1).max(64), quantity: z.number().int().min(0).max(9999) }).strict()).max(200).optional(),
   })
@@ -37,12 +39,12 @@ export const SaveFileSchema = z.union([
 ]);
 export type SaveFile = z.infer<typeof SaveFileSchema>;
 
-export const buildSaveFile = (player: PlayerState, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestState[]; locations?: LocationState[]; gameMinutes?: number; events?: WorldEventRecord[]; news?: NewsItem[]; factions?: FactionState[]; factionRelations?: FactionRelation[]; factionHistory?: FactionHistory[]; inventory?: { itemId: string; quantity: number }[] }, now = new Date()): SaveFile => ({
+export const buildSaveFile = (player: PlayerState, world: { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestState[]; locations?: LocationState[]; gameMinutes?: number; events?: WorldEventRecord[]; news?: NewsItem[]; factions?: FactionState[]; factionRelations?: FactionRelation[]; factionHistory?: FactionHistory[]; personalEvents?: PersonalEventRecord[]; inventory?: { itemId: string; quantity: number }[] }, now = new Date()): SaveFile => ({
   format: SAVE_FORMAT,
   schemaVersion: 2,
   exportedAt: now.toISOString(),
   player,
-  world: { npcs: world.npcs, relationships: world.relationships, memories: world.memories, quests: world.quests, locations: world.locations ?? [], events: world.events ?? [], news: world.news ?? [], factions: world.factions ?? [], factionRelations: world.factionRelations ?? [], factionHistory: world.factionHistory ?? [], ...(world.gameMinutes !== undefined ? { gameMinutes: world.gameMinutes } : {}), ...(world.inventory ? { inventory: world.inventory } : {}) },
+  world: { npcs: world.npcs, relationships: world.relationships, memories: world.memories, quests: world.quests, locations: world.locations ?? [], events: world.events ?? [], news: world.news ?? [], factions: world.factions ?? [], factionRelations: world.factionRelations ?? [], factionHistory: world.factionHistory ?? [], personalEvents: (world.personalEvents ?? []).map((e) => ({ ...e, idempotencyKey: null, fingerprint: null })), ...(world.gameMinutes !== undefined ? { gameMinutes: world.gameMinutes } : {}), ...(world.inventory ? { inventory: world.inventory } : {}) },
 });
 
 /** 解析存档文件；v1 的 world 为 null（导入时人物状态重置为初始） */

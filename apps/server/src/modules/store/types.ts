@@ -1,4 +1,4 @@
-import type { ActionResponse, ActionStatus, AuditEvent, FactionChange, FactionHistory, FactionRelation, FactionState, InventoryItem, LocationState, LogRecord, NewsItem, WorldEventRecord, NpcMemory, NpcState, PlayerState, QuestState, QuestStatus, Relationship } from '@jhz/contracts';
+import type { ActionResponse, ActionStatus, AuditEvent, FactionChange, FactionHistory, FactionRelation, FactionState, PersonalEventRecord, InventoryItem, LocationState, LogRecord, NewsItem, WorldEventRecord, NpcMemory, NpcState, PlayerState, QuestState, QuestStatus, Relationship } from '@jhz/contracts';
 import type { FactionEffect, LocationStatus, MemoryEventKind, NpcStatus, RelationDelta, RelationTargetType } from '@jhz/game-rules';
 
 export interface CultivationJobRecord {
@@ -111,6 +111,21 @@ export interface GameTx {
   factionHistory(limit?: number): FactionHistory[];
   /** 记录一个事件造成的势力变化：每个事件只能记一次（重复 CONFLICT）；事件不存在 NOT_FOUND；changes 不能为空 */
   addFactionHistory(input: { eventId: string; gameMinutes: number; text: string; changes: FactionChange[] }): FactionHistory;
+
+  /** 个人事件，按创建顺序；limit 只取最近的若干条 */
+  personalEvents(limit?: number): PersonalEventRecord[];
+  /** 进行中的个人事件 = 玩家「正忙」；没有返回 null */
+  activePersonalEvent(): PersonalEventRecord | null;
+  findPersonalByKey(idempotencyKey: string): PersonalEventRecord | null;
+  /** 新建进行中的个人事件；已有进行中的事件 CONFLICT，幂等键已用 CONFLICT */
+  createPersonalEvent(input: Pick<PersonalEventRecord, 'id' | 'idempotencyKey' | 'fingerprint' | 'intent' | 'proposal' | 'createdAtMinutes' | 'expiresAtMinutes' | 'chancePercent'>): PersonalEventRecord;
+  /** 了结进行中的个人事件（resolved / abandoned / expired）；不是进行中 PRECONDITION_FAILED，记录不自洽 VALIDATION_FAILED */
+  finishPersonalEvent(id: string, patch: Pick<PersonalEventRecord, 'state' | 'outcome' | 'roll' | 'resolvedAtMinutes' | 'lock'>): PersonalEventRecord;
+  /** 标记地点封锁已到期恢复（幂等） */
+  releasePersonalLock(id: string): PersonalEventRecord;
+
+  /** 传闻/新闻与势力历史的条数（审计快照用，比读出全部内容便宜） */
+  counts(): { news: number; factionHistory: number };
 
   /** 全部任务的可变状态（名字、步骤、奖励来自静态定义） */
   quests(): QuestState[];

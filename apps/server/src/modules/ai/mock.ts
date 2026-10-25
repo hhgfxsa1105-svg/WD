@@ -1,4 +1,5 @@
 import { LOCATION_DEFS, NPC_DEFS } from '@jhz/game-rules';
+import { PROPOSAL_MARKER } from './personal-prompt.js';
 import { AiError, type AiProvider, type AiRequest, type AiResponse } from './types.js';
 
 /** 一步脚本：直接给文本、给完整响应、抛出错误、或按请求动态决定；delayMs 用于模拟慢响应 */
@@ -75,7 +76,8 @@ export function createKeywordMockProvider(model = 'keyword-mock'): AiProvider {
     async complete(req) {
       const text = [...req.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
       let out: string;
-      if (req.purpose === 'narrate') out = '你定了定神，按自己的意思行事，一切顺理成章。';
+      if (req.messages[0]?.content.includes(PROPOSAL_MARKER)) out = mockProposal(text);
+      else if (req.purpose === 'narrate') out = '你定了定神，按自己的意思行事，一切顺理成章。';
       else if (/突破|冲关|破境|冲击/.test(text)) {
         const pill = /丹/.test(text) && !/不(用|吃|使用)/.test(text);
         out = plan('breakthrough', { intent: '尝试突破', target: pill ? { type: 'item', id: 'pill_breakthrough_fan' } : null });
@@ -83,7 +85,8 @@ export function createKeywordMockProvider(model = 'keyword-mock'): AiProvider {
       else if (/挂机|放置|(开始|继续).*修炼/.test(text)) out = plan('start_idle', { intent: '开始放置修炼' });
       else if (/去|前往|走到|到达|赶往|回到|上山|下山/.test(text) && placeOf(text)) {
         out = plan('travel', { intent: '前往' + LOCATION_DEFS[placeOf(text)!].name, target: { type: 'location', id: placeOf(text) } });
-      } else if (/修炼|打坐|练功|修行/.test(text)) out = plan('cultivate', { intent: '修炼' });
+      } else if (/打听|打探|摆摊|帮忙|帮厨|巡逻|巡视|切磋|跟踪|采药|砍柴/.test(text)) out = plan('custom', { intent: text.slice(0, 40) });
+      else if (/修炼|打坐|练功|修行/.test(text)) out = plan('cultivate', { intent: '修炼' });
       else if (/休息|歇|睡/.test(text)) out = plan('rest', { intent: '休息' });
       else if (/状态|属性|查看|看看自己/.test(text)) out = plan('check_status', { intent: '查看状态' });
       else if (/聊|谈|说话|问问|拜见|招呼|问候|拜访|找|见/.test(text)) {
@@ -95,4 +98,36 @@ export function createKeywordMockProvider(model = 'keyword-mock'): AiProvider {
       return { text: out, model, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, latencyMs: 0, attempts: 1, finishReason: 'stop', jsonModeUsed: !!req.json };
     },
   };
+}
+
+/** 模拟的个人事件提议：按摘要里在场的人给出一个小事件（只用白名单效果） */
+function mockProposal(userJson: string): string {
+  let ctx: { npcsHere?: { id: string; name: string }[]; intent?: string } = {};
+  try {
+    ctx = JSON.parse(userJson);
+  } catch {
+    /* 摘要损坏时给最保守的提议 */
+  }
+  const npc = ctx.npcsHere?.[0];
+  return JSON.stringify(
+    npc
+      ? {
+          title: `向${npc.name}打听消息`,
+          intro: `你凑到${npc.name}身边，不动声色地聊起了近来的见闻。`,
+          tier: 'small',
+          difficulty: 'easy',
+          skill: 'comprehension',
+          success: { narrative: `${npc.name}见你诚恳，把近来听到的风声说了不少。`, effects: [{ kind: 'npc_attitude', npcId: npc.id, affinity: 2 }, { kind: 'rumor', text: `听${npc.name}说，山下最近不太平` }] },
+          failure: { narrative: `${npc.name}警觉地看了你一眼，什么也没说。`, effects: [] },
+        }
+      : {
+          title: '四处走动打听',
+          intro: '你在附近转了转，留心听着往来行人的闲谈。',
+          tier: 'small',
+          difficulty: 'normal',
+          skill: 'comprehension',
+          success: { narrative: '你从几句闲谈里拼凑出了一点有用的风声。', effects: [{ kind: 'rumor', text: '听路人说，近来山下有生面孔出没' }] },
+          failure: { narrative: '转了一圈，没听到什么值得记下的。', effects: [] },
+        },
+  );
 }

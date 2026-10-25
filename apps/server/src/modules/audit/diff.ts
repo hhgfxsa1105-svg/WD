@@ -4,11 +4,12 @@ import type { GameTx } from '../store/types.js';
 type Snapshot = Record<string, unknown>;
 
 /** 嵌套展开的键：差异只列出变化的条目（如 inventory.pill_x、relations.npc_a>player:player_1） */
-const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests', 'locations', 'worldEvents', 'factions', 'factionRelations'] as const;
+const NESTED = ['inventory', 'npcs', 'relations', 'memories', 'quests', 'locations', 'worldEvents', 'factions', 'factionRelations', 'personalEvents'] as const;
 
 /** 审计用快照：角色状态 + 全部已知物品的数量（0 也列出，避免「用完」被当作字段消失）+ 放置修炼状态 + NPC 状态与关系 */
 export function snapshot(tx: GameTx): Snapshot {
   const qty = new Map(tx.inventory().map((i) => [i.itemId, i.quantity]));
+  const counts = tx.counts();
   return {
     ...tx.player(),
     gameMinutes: tx.gameMinutes(),
@@ -17,10 +18,11 @@ export function snapshot(tx: GameTx): Snapshot {
     npcs: Object.fromEntries(tx.npcs().map((n) => [n.id, { locationId: n.locationId, status: n.status, goals: n.goals }])),
     memories: tx.memoryCounts(),
     worldEvents: Object.fromEntries(tx.worldEvents().map((e) => [e.id, { state: e.state, rumored: e.rumored, participated: e.participated }])),
-    newsCount: tx.news().length,
+    newsCount: counts.news,
     factions: Object.fromEntries(tx.factions().map((f) => [f.id, { strength: f.strength, attitude: f.attitude }])),
     factionRelations: Object.fromEntries(tx.factionRelations().map((r) => [`${r.a}|${r.b}`, r.value])),
-    factionHistoryCount: tx.factionHistory().length,
+    factionHistoryCount: counts.factionHistory,
+    personalEvents: Object.fromEntries(tx.personalEvents().map((e) => [e.id, { state: e.state, outcome: e.outcome, lockReleased: e.lock?.released ?? null }])),
     locations: Object.fromEntries(tx.locations().map((l) => [l.id, { status: l.status, reason: l.reason, visited: l.visited }])),
     quests: Object.fromEntries(tx.quests().map((q) => [q.id, { status: q.status, stepIndex: q.stepIndex, claimed: q.claimed }])),
     relations: Object.fromEntries(tx.relationships().map((r) => [`${r.npcId}>${r.targetType}:${r.targetId}`, { affinity: r.affinity, trust: r.trust, hostility: r.hostility }])),

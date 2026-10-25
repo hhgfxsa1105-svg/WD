@@ -78,6 +78,8 @@ export function App() {
                 thinking={g.thinking}
                 aiReply={g.aiReply}
                 onFree={g.runFree}
+                personal={g.personal?.active ?? null}
+                onPersonal={g.runPersonal}
               />
             ) : sheet === '背包' ? (
               <InventoryPanel items={g.inventory} />

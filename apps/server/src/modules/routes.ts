@@ -30,6 +30,9 @@ import { explainRelation } from './npc/explain.js';
 import { meetNpc } from './npc/memory.js';
 import { questViews } from './quest/service.js';
 import type { Narrator } from './narrative/service.js';
+import type { PersonalService } from './personal/service.js';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 interface Deps {
   store: GameStore;
@@ -38,6 +41,7 @@ interface Deps {
   clock: Clock;
   /** 系统时间落后于世界时间的时长（仅 WorldClock 提供），正常为 0 */
   clockBehindMs: () => number;
+  personal: PersonalService;
   ai: AiGateway;
   free: FreeActionService;
   narrator: Narrator;
@@ -45,7 +49,7 @@ interface Deps {
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
-export function registerGameRoutes(app: FastifyInstance, { store, actions, cultivation, clock, clockBehindMs, ai, free, narrator }: Deps) {
+export function registerGameRoutes(app: FastifyInstance, { store, actions, cultivation, clock, clockBehindMs, ai, free, narrator, personal }: Deps) {
   // AI 功能状态：不含任何密钥与地址
   app.get('/api/v1/ai/status', async () => AiStatusResponseSchema.parse(ai.status()));
 
@@ -118,6 +122,19 @@ export function registerGameRoutes(app: FastifyInstance, { store, actions, culti
 
   // 世界事件（只读）：已放出传闻的、进行中的和已过去的；还没有风声的事件不可见
   app.get('/api/v1/world/events', async () => WorldEventsResponseSchema.parse({ events: store.read((tx) => eventViews(tx)) }));
+
+  // 个人事件（个人轨）：当前进行中的（= 玩家正忙）与最近的几件
+  app.get('/api/v1/world/personal', async () => personal.list());
+
+  // 进行：服务端掷点判定成败并应用效果；放弃：算失败，不发生任何效果。重复操作 422（事件已了结）
+  app.post<{ Params: { id: string } }>('/api/v1/world/personal/:id/resolve', async (req) => {
+    if (!UUID.test(req.params.id)) throw new AppError('NOT_FOUND', '没有这件事');
+    return personal.resolve(req.params.id);
+  });
+  app.post<{ Params: { id: string } }>('/api/v1/world/personal/:id/abandon', async (req) => {
+    if (!UUID.test(req.params.id)) throw new AppError('NOT_FOUND', '没有这件事');
+    return personal.abandon(req.params.id);
+  });
 
   // 势力现状与近期历史（只读）：只含已了结事件造成的变化，不会透露还没发生的事
   app.get('/api/v1/world/factions', async () => store.read((tx) => factionsView(tx)));

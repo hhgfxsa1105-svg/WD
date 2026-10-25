@@ -1,5 +1,7 @@
 import { LocationStateSchema, NpcMemorySchema, WorldEventRecordSchema, type NewsItem, type WorldEventRecord, NpcStateSchema, QuestStateSchema, RelationshipSchema, type LocationState, type NpcMemory, type NpcState, type QuestState, type QuestStatus, type Relationship } from '@jhz/contracts';
 import { SYSTEM_EVENT_DEFS, INITIAL_VISITED, LOCATION_DEFS, LOCATION_REASON_MAX, isKnownItem, QUEST_DEFS, canTransition, initialQuestStatus, isQuestId, type QuestId, MEMORY_EVENTS, planCompaction, INITIAL_RELATIONS, NPC_DEFS, NPC_STATUSES, applyRelationDelta, isLocationId, isNpcId, type RelationDelta, type RelationTargetType } from '@jhz/game-rules';
+import { PersonalEventRecordSchema, type PersonalEventRecord } from '@jhz/contracts';
+import { validateEffects } from '@jhz/game-rules';
 import { FACTION_DEFS, INITIAL_FACTION_RELATIONS, applyFactionEffects as applyFactionRules, isFactionId, relationKey as factionRelationKey, type FactionEffect } from '@jhz/game-rules';
 import type { FactionChange, FactionHistory, FactionRelation, FactionState } from '@jhz/contracts';
 import { AppError } from '../../shared/errors.js';
@@ -47,11 +49,11 @@ export function nextRelationship(current: Relationship | undefined, npcId: strin
  * 文件里缺少的 NPC / 关系用初始值补齐。不合格时抛出带中文原因的 Error。
  */
 export function mergeImportedWorld(
-  world: { npcs: NpcState[]; relationships: Relationship[]; memories?: NpcMemory[]; quests?: QuestState[]; locations?: LocationState[]; gameMinutes?: number; events?: WorldEventRecord[]; news?: NewsItem[]; factions?: FactionState[]; factionRelations?: FactionRelation[]; factionHistory?: FactionHistory[]; inventory?: { itemId: string; quantity: number }[] },
+  world: { npcs: NpcState[]; relationships: Relationship[]; memories?: NpcMemory[]; quests?: QuestState[]; locations?: LocationState[]; gameMinutes?: number; events?: WorldEventRecord[]; news?: NewsItem[]; factions?: FactionState[]; factionRelations?: FactionRelation[]; factionHistory?: FactionHistory[]; personalEvents?: PersonalEventRecord[]; inventory?: { itemId: string; quantity: number }[] },
   now: number = Date.now(),
   /** 玩家当前所在地点：导入后它一定是「去过」的 */
   currentLocationId: string = 'loc_qingyun_gate',
-): { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; locations: LocationState[]; gameMinutes: number | undefined; events: WorldEventRecord[]; news: NewsItem[]; factions: FactionState[]; factionRelations: FactionRelation[]; factionHistory: FactionHistory[]; inventory: { itemId: string; quantity: number }[] | null } {
+): { npcs: NpcState[]; relationships: Relationship[]; memories: NpcMemory[]; quests: QuestRecord[]; locations: LocationState[]; gameMinutes: number | undefined; events: WorldEventRecord[]; news: NewsItem[]; factions: FactionState[]; factionRelations: FactionRelation[]; factionHistory: FactionHistory[]; personalEvents: PersonalEventRecord[]; inventory: { itemId: string; quantity: number }[] | null } {
   const npcs = new Map(initialNpcs().map((n) => [n.id, n]));
   const seenNpc = new Set<string>();
   for (const n of world.npcs) {
@@ -109,6 +111,7 @@ export function mergeImportedWorld(
     factions: fac.factions,
     factionRelations: fac.relations,
     factionHistory: validateImportedFactionHistory(world.factionHistory ?? [], events),
+    personalEvents: validateImportedPersonal(world.personalEvents ?? []),
     inventory,
   };
 }
@@ -166,8 +169,8 @@ export function compactMemories(
 }
 
 /** 导出存档用的世界快照：NPC 状态、关系与全部记忆 */
-export function snapshotWorld(tx: { npcs(): NpcState[]; relationships(): Relationship[]; memories(npcId: string): NpcMemory[]; quests(): QuestState[]; locations(): LocationState[]; gameMinutes(): number; worldEvents(): WorldEventRecord[]; news(): NewsItem[]; factions(): FactionState[]; factionRelations(): FactionRelation[]; factionHistory(): FactionHistory[]; inventory(): { itemId: string; quantity: number }[] }) {
-  return { npcs: tx.npcs(), relationships: tx.relationships(), memories: tx.npcs().flatMap((n) => tx.memories(n.id)), quests: tx.quests(), locations: tx.locations(), gameMinutes: tx.gameMinutes(), events: tx.worldEvents(), news: tx.news(), factions: tx.factions(), factionRelations: tx.factionRelations(), factionHistory: tx.factionHistory(), inventory: tx.inventory().map((i) => ({ itemId: i.itemId, quantity: i.quantity })) };
+export function snapshotWorld(tx: { npcs(): NpcState[]; relationships(): Relationship[]; memories(npcId: string): NpcMemory[]; quests(): QuestState[]; locations(): LocationState[]; gameMinutes(): number; worldEvents(): WorldEventRecord[]; news(): NewsItem[]; factions(): FactionState[]; factionRelations(): FactionRelation[]; factionHistory(): FactionHistory[]; personalEvents(): PersonalEventRecord[]; inventory(): { itemId: string; quantity: number }[] }) {
+  return { npcs: tx.npcs(), relationships: tx.relationships(), memories: tx.npcs().flatMap((n) => tx.memories(n.id)), quests: tx.quests(), locations: tx.locations(), gameMinutes: tx.gameMinutes(), events: tx.worldEvents(), news: tx.news(), factions: tx.factions(), factionRelations: tx.factionRelations(), factionHistory: tx.factionHistory(), personalEvents: tx.personalEvents(), inventory: tx.inventory().map((i) => ({ itemId: i.itemId, quantity: i.quantity })) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -397,4 +400,38 @@ export function validateImportedFactionHistory(history: FactionHistory[], events
     for (const c of h.changes) if (!isFactionId(c.faction) || (c.other !== null && !isFactionId(c.other))) throw new Error(`存档里的势力历史涉及未知势力：${h.eventId}`);
   }
   return history;
+}
+
+/* ------------------------------------------------------------------ */
+/* 个人事件                                                            */
+/* ------------------------------------------------------------------ */
+
+/** 了结一个进行中的个人事件（纯计算 + 校验） */
+export function finishedPersonal(cur: PersonalEventRecord, patch: Pick<PersonalEventRecord, 'state' | 'outcome' | 'roll' | 'resolvedAtMinutes' | 'lock'>): PersonalEventRecord {
+  if (cur.state !== 'active') throw new AppError('PRECONDITION_FAILED', '这件事已经了结');
+  if (patch.state === 'active') throw new AppError('VALIDATION_FAILED', '不能把事件改回进行中');
+  const parsed = PersonalEventRecordSchema.safeParse({ ...cur, ...patch });
+  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '个人事件记录不自洽');
+  return parsed.data;
+}
+
+export function newPersonal(input: Pick<PersonalEventRecord, 'id' | 'idempotencyKey' | 'fingerprint' | 'intent' | 'proposal' | 'createdAtMinutes' | 'expiresAtMinutes' | 'chancePercent'>): PersonalEventRecord {
+  const parsed = PersonalEventRecordSchema.safeParse({ ...input, state: 'active', outcome: null, roll: null, resolvedAtMinutes: null, lock: null });
+  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '个人事件记录不自洽');
+  return parsed.data;
+}
+
+/** 校验导入的个人事件：ID 不重复、至多一个进行中；提议里的效果仍须通过白名单检查 */
+export function validateImportedPersonal(list: PersonalEventRecord[]): PersonalEventRecord[] {
+  const ids = new Set<string>();
+  let active = 0;
+  for (const e of list) {
+    if (ids.has(e.id)) throw new Error(`存档里个人事件重复：${e.id}`);
+    ids.add(e.id);
+    if (e.state === 'active') active++;
+    const bad = validateEffects(e.proposal);
+    if (bad) throw new Error(`存档里的个人事件 ${e.id} 效果不合法：${bad}`);
+  }
+  if (active > 1) throw new Error('存档里有多个进行中的个人事件');
+  return list.map((e) => ({ ...e, idempotencyKey: null, fingerprint: null }));
 }

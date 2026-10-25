@@ -92,6 +92,13 @@
       "when": 1792910578657,
       "tag": "0012_factions",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1792918696363,
+      "tag": "0013_personal_events",
+      "breakpoints": true
     }
   ]
 }

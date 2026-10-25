@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { FactionHistorySchema, type FactionHistory, type FactionRelation, type FactionState, NewsItemSchema, LocationStateSchema, LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type LocationState, type NewsItem, type NpcMemory, type NpcState, type WorldEventRecord, type PlayerState, type Relationship } from '@jhz/contracts';
+import { type PersonalEventRecord, FactionHistorySchema, type FactionHistory, type FactionRelation, type FactionState, NewsItemSchema, LocationStateSchema, LogRecordSchema, NpcMemorySchema, NpcStateSchema, PlayerStateSchema, type AuditEvent, type LogRecord, type LocationState, type NewsItem, type NpcMemory, type NpcState, type WorldEventRecord, type PlayerState, type Relationship } from '@jhz/contracts';
 import { INITIAL_GAME_MINUTES, INITIAL_INVENTORY, MAX_ADVANCE_MINUTES, createInitialPlayer, toInventoryItems } from '@jhz/game-rules';
 import { AppError } from '../../shared/errors.js';
 import { relationKey as factionRelationKey } from '@jhz/game-rules';
-import { computeFactionEffects, initialFactionRelations, initialFactions, applyEventPatch, initialWorldEvent, initialWorldEvents, initialLocations, normalizeLocationStatus, relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
+import { finishedPersonal, newPersonal, computeFactionEffects, initialFactionRelations, initialFactions, applyEventPatch, initialWorldEvent, initialWorldEvents, initialLocations, normalizeLocationStatus, relationChangeOf, applyQuestPatch, assertClaimable, assertQuest, initialQuestRecords, toQuestState, type QuestRecord, assertLocation, assertNpc, assertStatus, assertTarget, compactMemories, validateMemoryInput, initialNpcs, initialRelationships, nextRelationship, relationKey } from './world-rules.js';
 import type { AiCallRecord, CultivationJobRecord, GameStore, GameTx, StoredAction } from './types.js';
 
 interface State {
@@ -22,6 +22,7 @@ interface State {
   factions: Map<string, FactionState>;
   factionRelations: Map<string, FactionRelation>;
   factionHistory: FactionHistory[];
+  personal: PersonalEventRecord[];
   events: (AuditEvent & { log: LogRecord | null })[];
   seq: number;
 }
@@ -42,6 +43,7 @@ const cloneState = (s: State): State => ({
   factions: new Map([...s.factions].map(([k, v]) => [k, { ...v }])),
   factionRelations: new Map([...s.factionRelations].map(([k, v]) => [k, { ...v }])),
   factionHistory: structuredClone(s.factionHistory),
+  personal: structuredClone(s.personal),
   events: structuredClone(s.events),
   seq: s.seq,
 });
@@ -93,6 +95,7 @@ function makeTx(s: State): GameTx {
       return { ...next };
     },
     news: (limit) => structuredClone(limit === undefined ? s.news : s.news.slice(-limit)),
+    counts: () => ({ news: s.news.length, factionHistory: s.factionHistory.length }),
     factions: () => [...s.factions.values()].map((f) => ({ ...f })).sort((x, y) => x.id.localeCompare(y.id)),
     factionRelations: () => [...s.factionRelations.values()].map((r) => ({ ...r })).sort((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b)),
     applyFactionEffects(effects) {
@@ -100,6 +103,29 @@ function makeTx(s: State): GameTx {
       for (const f of r.factions) s.factions.set(f.id, f);
       for (const x of r.relations) s.factionRelations.set(factionRelationKey(x.a, x.b), x);
       return r.changes;
+    },
+    personalEvents: (limit) => structuredClone(limit === undefined ? s.personal : s.personal.slice(-limit)),
+    activePersonalEvent: () => structuredClone(s.personal.find((e) => e.state === 'active') ?? null),
+    findPersonalByKey: (key) => structuredClone(s.personal.find((e) => e.idempotencyKey === key) ?? null),
+    createPersonalEvent(input) {
+      if (s.personal.some((e) => e.state === 'active')) throw new AppError('CONFLICT', '你正忙着另一件事');
+      if (input.idempotencyKey && s.personal.some((e) => e.idempotencyKey === input.idempotencyKey)) throw new AppError('CONFLICT', '幂等键已被使用');
+      const rec = newPersonal(input);
+      s.personal.push(rec);
+      return structuredClone(rec);
+    },
+    finishPersonalEvent(id, patch) {
+      const i = s.personal.findIndex((e) => e.id === id);
+      if (i < 0) throw new AppError('NOT_FOUND', '没有这件事');
+      s.personal[i] = finishedPersonal(s.personal[i]!, patch);
+      return structuredClone(s.personal[i]!);
+    },
+    releasePersonalLock(id) {
+      const i = s.personal.findIndex((e) => e.id === id);
+      if (i < 0) throw new AppError('NOT_FOUND', '没有这件事');
+      const cur = s.personal[i]!;
+      if (cur.lock) s.personal[i] = { ...cur, lock: { ...cur.lock, released: true } };
+      return structuredClone(s.personal[i]!);
     },
     factionHistory: (limit) => structuredClone(limit === undefined ? s.factionHistory : s.factionHistory.slice(-limit)),
     addFactionHistory(input) {
@@ -266,6 +292,7 @@ export function createMemoryGameStore(initial: PlayerState = createInitialPlayer
     factions: new Map(initialFactions().map((f) => [f.id, f])),
     factionRelations: new Map(initialFactionRelations().map((r) => [factionRelationKey(r.a, r.b), r])),
     factionHistory: [],
+    personal: [],
     relations: new Map(initialRelationships().map((r) => [relationKey(r.npcId, r.targetType, r.targetId), r])),
     events: [],
     seq: 0,
